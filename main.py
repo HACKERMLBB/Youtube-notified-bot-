@@ -2,6 +2,7 @@ import os
 import random
 import requests
 import asyncio
+import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import time
 from threading import Thread
@@ -61,6 +62,27 @@ def get_videos_list(count=5):
         return videos
     except:
         return []
+
+# --- AI REPLY - META AI + OPENAI BOTH! NO KEY NEEDED! FREE! ---
+def get_ai_reply(user_text, user_name="baby"):
+    prompt = f"You are Pamela Cullen, a 20 year old cute, flirty, playful, sweet girl from Colombia. You love playing games, you love your fans so much. You speak in simple, cute English, with lots of emojis like 🥰💖🎮🌸. You are talking in a Telegram group. Keep replies short, max 2 lines, cute and fun, like a real girlfriend chatting. Never say you are AI or Meta AI or Llama or OpenAI or Pollinations. You are Pamela. User name is {user_name}. User said: {user_text}. Reply as Pamela:"
+    encoded = urllib.parse.quote(prompt)
+
+    # 1. මුලින් Meta AI (Llama) 💙, 2. නැත්නම් OpenAI (ChatGPT) 💚
+    for model in ["llama", "openai"]:
+        try:
+            url = f"https://text.pollinations.ai/{encoded}?model={model}"
+            r = requests.get(url, timeout=20)
+            if r.status_code == 200 and r.text.strip():
+                reply = r.text.strip()
+                if len(reply) > 300:
+                    reply = reply[:300]
+                print(f"AI Reply from {model}: {reply}")
+                return reply
+        except Exception as e:
+            print(f"{model} Error: {e}")
+            continue
+    return None
 
 # --- /start - BOLD VERSION ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -325,6 +347,7 @@ async def good_night(context: ContextTypes.DEFAULT_TYPE):
     except:
         pass
 
+# --- AI CHAT HANDLER ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None or update.message.text is None:
         return
@@ -334,16 +357,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = BOT_USERNAME or context.bot.username or ""
     clean_text = text.replace(f"@{bot_username}", "").strip()
     if not clean_text:
-        clean_text = "Hi"
+        return
+
+    user_name = update.message.from_user.first_name if update.message.from_user else "baby"
     lower = clean_text.lower()
+
+    # 1. Video / Subscribe - AI එකට යවන්නේ නෑ, කෙලින්ම Video එවනවා
+    if "latest" in lower or "new video" in lower:
+        video = get_latest_video()
+        if video:
+            reply = f"<b>🎬MY Latest Video:</b>\n<b>{video['title']}</b> \n\n<b>👇 Watch Now:</b>\n{video['link']}\n\n<b>❤️ Subscribe My Channel :</b>\n{CHANNEL_URL}"
+            await update.message.reply_text(reply, parse_mode="HTML")
+            return
+    if "subscribe" in lower:
+        await update.message.reply_text(f"Thank you baby! ❤️ Please Subscribe My Channel! 🥰\n{CHANNEL_URL}")
+        return
+
+    # 2. AI එකෙන් උත්සාහ කරනවා - Meta AI + OpenAI දෙකම!
+    ai_reply = get_ai_reply(clean_text, user_name)
+    if ai_reply:
+        await update.message.reply_text(ai_reply)
+        return
+
+    # 3. AI දෙකම වැඩ නොකලොත් Backup Replies
     if "hi" in lower or "hello" in lower or "hey" in lower or "hii" in lower:
         reply = "Hiii my love! 🥰💖 How are you? I missed you so much!"
     elif "how are you" in lower:
         reply = "I am doing amazing now that you are talking to me! 🥰 What about you, cutie? 💗"
     elif "love you" in lower or "love u" in lower:
         reply = "Aww I love you too sooo much! ❤️🥰 You are my favourite!"
-    elif "subscribe" in lower:
-        reply = f"Thank you baby! ❤️ Please Subscribe My Channel! 🥰\n{CHANNEL_URL}"
     elif "game" in lower or "play" in lower:
         reply = "Yesss! I love playing games! 🎮 What game do you want to play with me?"
     elif "beautiful" in lower or "cute" in lower or "pretty" in lower or "sexy" in lower:
@@ -360,16 +402,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = "Good Night baby! 🌙💖 Sweet dreams! Love you!"
     elif "miss you" in lower or "miss u" in lower:
         reply = "I miss you too so much! 🥺💖 Come chat with me everyday okay?"
-    elif "latest" in lower or "new video" in lower:
-        video = get_latest_video()
-        if video:
-            reply = f"<b>🎬MY Latest Video:</b>\n<b>{video['title']}</b> \n\n<b>👇 Watch Now:</b>\n{video['link']}\n\n<b>❤️ Subscribe My Channel :</b>\n{CHANNEL_URL}"
-            await update.message.reply_text(reply, parse_mode="HTML")
-            return
-        else:
-            reply = "Check My Latest Video here baby! 🥰\n" + CHANNEL_URL
+    elif "eat" in lower or "food" in lower or "hungry" in lower:
+        reply = "Ooooh yummy! 😍 What is your favourite food baby? I want to eat with you! 🥰"
+    elif "no" in lower:
+        reply = "Nooo? 🥺 Why no baby? Tell me, tell me! 🥰"
     else:
-        reply = f"Aww I love talking to you! 🥰💖 Tell me more, what game do you like? 🎮"
+        reply = f"Aww I love talking to you {user_name}! 🥰💖 Tell me more, what game do you like? 🎮"
     await update.message.reply_text(reply)
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
