@@ -1,6 +1,7 @@
 import os
 import random
 import requests
+import asyncio
 import xml.etree.ElementTree as ET
 from datetime import time
 from threading import Thread
@@ -11,7 +12,7 @@ from telegram.constants import ParseMode
 
 # --- Config - Your Env Names ---
 TOKEN = os.environ.get("BOT_TOKEN")
-GROUP_ID = os.environ.get("CHANNEL_IDS", "")  # Your Group ID -100xxxx
+GROUP_ID = os.environ.get("CHANNEL_IDS", "")
 CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "")
 CHANNEL_NAME = os.environ.get("YOUTUBE_CHANNEL_NAME", "Pamela Cullen")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "")
@@ -354,9 +355,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Wow! So cute photo! 😍💖 You look amazing! I love it!")
 
-# --- Main ---
-def main():
-    Thread(target=run_flask, daemon=True).start()
+# --- Main - FIXED for Python 3.14 ---
+async def main_async():
     app_builder = ApplicationBuilder().token(TOKEN).build()
     jq = app_builder.job_queue
     app_builder.add_handler(CommandHandler("start", start))
@@ -387,7 +387,12 @@ def main():
         jq.run_daily(good_morning, time=time(hour=6, minute=0))
         jq.run_daily(good_night, time=time(hour=22, minute=0))
     print("Pamela Bot Started...")
-    app_builder.run_polling()
+    await app_builder.initialize()
+    await app_builder.start()
+    await app_builder.updater.start_polling()
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    main()
+    Thread(target=run_flask, daemon=True).start()
+    asyncio.run(main_async())
