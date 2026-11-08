@@ -8,9 +8,7 @@ from threading import Thread
 from flask import Flask
 from telegram import Update, ChatPermissions
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-from telegram.constants import ParseMode
 
-# --- Config - Your Env Names ---
 TOKEN = os.environ.get("BOT_TOKEN")
 GROUP_ID = os.environ.get("CHANNEL_IDS", "")
 CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "")
@@ -21,7 +19,6 @@ CHANNEL_URL = "https://youtube.com/@pamela_cullen?si=NAgcuWJptFGxc9I6"
 LAST_VIDEO_ID = {"id": None}
 USER_WARNINGS = {}
 
-# --- Flask Keep Alive ---
 app = Flask(__name__)
 @app.route('/')
 def home():
@@ -31,7 +28,6 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-# --- YouTube Helper ---
 def get_latest_video():
     try:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
@@ -46,8 +42,7 @@ def get_latest_video():
         title = entry.find('atom:title', ns).text
         link = entry.find('atom:link', ns).attrib['href']
         vid_id = entry.find('yt:videoId', ns).text
-        author = entry.find('atom:author/atom:name', ns).text
-        return {"title": title, "link": link, "id": vid_id, "author": author}
+        return {"title": title, "link": link, "id": vid_id}
     except Exception as e:
         print(f"Error: {e}")
         return None
@@ -67,27 +62,44 @@ def get_videos_list(count=5):
     except:
         return []
 
-# --- /start ---
+# --- /start - BOLD VERSION ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = get_latest_video()
     if video:
-        txt = f"🌸✨ <b>Hello, My Lovelies!</b> ✨🌸\n\n"
-        txt += f"👋 <b>Hi, My Name Is Pamela!</b> 💖\n\n"
-        txt += f"🇨🇴 I Am From Colombia\n🎂 I Am 20 Years Old\n🎮 I Love Playing Games\n💗 And I Love You All So Much!\n\n"
-        txt += f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        txt += f"🎬 <b>Latest Video:</b>\n<b>{video['title']}</b>\n\n👇 <b>Watch Now:</b>\n{video['link']}\n\n"
-        txt += f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        txt += f"💬 <b>You Can Chat With Me Anytime!</b>\nJust tag me in the group and talk to me! 🥰\n\n"
-        txt += f"❤️ <b>Subscribe:</b>\n{CHANNEL_URL}\n\n🌸 Love You All! 🌸💖"
+        txt = f"<b>🌸✨ Hello, My Lovelies! ✨🌸</b>\n\n"
+        txt += f"<b>👋 Hi, My Name Is Pamela! 💖</b>\n\n"
+        txt += f"<b>🇨🇴 I Am From Colombia</b>\n"
+        txt += f"<b>🎂 I Am 20 Years Old</b>\n"
+        txt += f"<b>🎮 I Love Playing Games</b>\n"
+        txt += f"<b>💗 And I Love You All So Much!</b>\n\n"
+        txt += f"<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+        txt += f"<b>🎬MY Latest Video:</b>\n"
+        txt += f"<b>{video['title']}</b> \n\n"
+        txt += f"<b>👇 Watch Now:</b>\n"
+        txt += f"{video['link']}\n\n"
+        txt += f"<b>━━━━━━━━━━━━━━━━━━━━</b>\n\n"
+        txt += f"<b>💬 You Can Chat With Me Anytime!🥰</b>\n\n"
+        txt += f"<b>❤️ Subscribe My Channel :</b>\n"
+        txt += f"{CHANNEL_URL}\n\n"
+        txt += f"<b>🌸 Love You All! 🌸💖</b>"
     else:
-        txt = f"🌸✨ <b>Hello, My Lovelies!</b> ✨🌸\n\n👋 <b>Hi, My Name Is Pamela!</b> 💖\n\n🇨🇴 I Am From Colombia\n🎂 I Am 20 Years Old\n🎮 I Love Playing Games\n💗 And I Love You All So Much!\n\n💬 Chat With Me Anytime! 🥰\n\n❤️ Subscribe: {CHANNEL_URL}\n\n🌸 Love You All! 🌸💖"
+        txt = f"<b>🌸✨ Hello, My Lovelies! ✨🌸</b>\n\n"
+        txt += f"<b>👋 Hi, My Name Is Pamela! 💖</b>\n\n"
+        txt += f"<b>🇨🇴 I Am From Colombia</b>\n"
+        txt += f"<b>🎂 I Am 20 Years Old</b>\n"
+        txt += f"<b>🎮 I Love Playing Games</b>\n"
+        txt += f"<b>💗 And I Love You All So Much!</b>\n\n"
+        txt += f"<b>💬 You Can Chat With Me Anytime!🥰</b>\n\n"
+        txt += f"<b>❤️ Subscribe My Channel :</b>\n"
+        txt += f"{CHANNEL_URL}\n\n"
+        txt += f"<b>🌸 Love You All! 🌸💖</b>"
     await update.message.reply_text(txt, parse_mode="HTML")
 
-# --- YouTube Commands ---
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = get_latest_video()
     if video:
-        await update.message.reply_text(f"🎬 <b>Latest Video:</b>\n<b>{video['title']}</b>\n\n{video['link']}", parse_mode="HTML")
+        txt = f"<b>🎬MY Latest Video:</b>\n<b>{video['title']}</b> \n\n<b>👇 Watch Now:</b>\n{video['link']}\n\n<b>❤️ Subscribe My Channel :</b>\n{CHANNEL_URL}"
+        await update.message.reply_text(txt, parse_mode="HTML")
     else:
         await update.message.reply_text("😢 Sorry, I could not find the latest video!")
 
@@ -96,15 +108,15 @@ async def videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not vids:
         await update.message.reply_text("😢 No videos found!")
         return
-    txt = "🎬 <b>Latest 5 Videos:</b>\n\n"
+    txt = "<b>🎬 My Latest 5 Videos:</b>\n\n"
     for i, v in enumerate(vids, 1):
-        txt += f"{i}. <b>{v['title']}</b>\n{v['link']}\n\n"
+        txt += f"<b>{i}. {v['title']}</b>\n{v['link']}\n\n"
+    txt += f"<b>❤️ Subscribe My Channel :</b>\n{CHANNEL_URL}"
     await update.message.reply_text(txt, parse_mode="HTML")
 
 async def subs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"❤️ <b>{CHANNEL_NAME} Channel</b>\n\n🔗 {CHANNEL_URL}\n\nPlease Subscribe & Support Me! 🥰💖\n\nUse /latest to see my newest video!", parse_mode="HTML")
+    await update.message.reply_text(f"<b>❤️ {CHANNEL_NAME} Channel</b>\n\n🔗 {CHANNEL_URL}\n\n<b>Please Subscribe My Channel & Support Me! 🥰💖</b>\n\nUse /latest to see My Latest Video!", parse_mode="HTML")
 
-# --- Auto Post New Video + Pin ---
 async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
     if not GROUP_ID:
         return
@@ -116,21 +128,20 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
         return
     if video["id"] != LAST_VIDEO_ID["id"]:
         LAST_VIDEO_ID["id"] = video["id"]
-        txt = f"🔥🔥 <b>NEW VIDEO OUT NOW!</b> 🔥🔥\n\n🎬 <b>{video['title']}</b>\n\n👇 <b>Watch Now:</b>\n{video['link']}\n\n❤️ Like, Comment & Subscribe! 🥰\n{CHANNEL_URL}"
+        txt = f"<b>🔥🔥 NEW VIDEO OUT NOW! 🔥🔥</b>\n\n<b>🎬 {video['title']}</b>\n\n<b>👇 Watch Now:</b>\n{video['link']}\n\n<b>❤️ Subscribe My Channel! 🥰</b>\n{CHANNEL_URL}"
         try:
             msg = await context.bot.send_message(chat_id=int(GROUP_ID), text=txt, parse_mode="HTML")
             await context.bot.pin_chat_message(chat_id=int(GROUP_ID), message_id=msg.message_id, disable_notification=True)
         except Exception as e:
             print(f"Pin Error: {e}")
 
-# --- Games & Fun ---
 async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    txt = "🎮 <b>Pamela Game Zone!</b>\n\nChoose a game:\n\n🎲 /dice - Roll a dice\n✂️ /rps rock / paper / scissors\n🔢 /guess - Guess my number (1-10)\n❤️ /love YourName CrushName - Love Calculator\n💬 /quote - Cute Quote"
+    txt = "<b>🎮 Pamela Game Zone!</b>\n\n<b>Choose a game:</b>\n\n🎲 /dice - Roll a dice\n✂️ /rps rock / paper / scissors\n🔢 /guess - Guess my number (1-10)\n❤️ /love YourName CrushName - Love Calculator\n💬 /quote - Cute Quote"
     await update.message.reply_text(txt, parse_mode="HTML")
 
 async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     n = random.randint(1, 6)
-    await update.message.reply_text(f"🎲 You rolled: <b>{n}</b>! {'Wow! Lucky you! 🥰' if n==6 else 'Try again cutie! 💖'}", parse_mode="HTML")
+    await update.message.reply_text(f"🎲 You rolled: <b>{n}</b>! {'<b>Wow! Lucky you! 🥰</b>' if n==6 else 'Try again cutie! 💖'}", parse_mode="HTML")
 
 async def rps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -161,9 +172,9 @@ async def love(update: Update, context: ContextTypes.DEFAULT_TYPE):
     a = context.args[0]
     b = context.args[1]
     pct = random.randint(50, 100)
-    txt = f"💖 <b>Love Calculator</b> 💖\n\n{a} ❤️ {b}\n\nLove Percentage: <b>{pct}%</b>\n"
+    txt = f"<b>💖 Love Calculator 💖</b>\n\n<b>{a} ❤️ {b}</b>\n\nLove Percentage: <b>{pct}%</b>\n"
     if pct > 90:
-        txt += "Perfect Couple! Made for each other! 💍✨"
+        txt += "<b>Perfect Couple! Made for each other! 💍✨</b>"
     elif pct > 75:
         txt += "So Cute Together! 🥰"
     else:
@@ -179,9 +190,8 @@ async def quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Never give up, my love! You are strong! 💪💖",
         "You are the cutest player in my game! 🎮💗"
     ]
-    await update.message.reply_text(f"💬 <b>Pamela Quote:</b>\n\n{random.choice(quotes)}", parse_mode="HTML")
+    await update.message.reply_text(f"<b>💬 Pamela Quote:</b>\n\n<b>{random.choice(quotes)}</b>", parse_mode="HTML")
 
-# --- Group Management Like Rose Bot ---
 async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         member = await context.bot.get_chat_member(update.effective_chat.id, update.effective_user.id)
@@ -211,7 +221,7 @@ async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     target = update.message.reply_to_message.from_user
     await context.bot.unban_chat_member(update.effective_chat.id, target.id)
-    await update.message.reply_text(f"✅ {target.first_name} is unbanned! Welcome back! 🥰")
+    await update.message.reply_text(f"✅ <b>{target.first_name}</b> is unbanned! Welcome back! 🥰", parse_mode="HTML")
 
 async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -222,7 +232,7 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = update.message.reply_to_message.from_user
     await context.bot.ban_chat_member(update.effective_chat.id, target.id)
     await context.bot.unban_chat_member(update.effective_chat.id, target.id)
-    await update.message.reply_text(f"👢 {target.first_name} kicked! See you later!")
+    await update.message.reply_text(f"👢 <b>{target.first_name}</b> kicked! See you later!", parse_mode="HTML")
 
 async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -232,7 +242,7 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     target = update.message.reply_to_message.from_user
     await context.bot.restrict_chat_member(update.effective_chat.id, target.id, permissions=ChatPermissions(can_send_messages=False))
-    await update.message.reply_text(f"🔇 {target.first_name} muted! Shhh... 🤫")
+    await update.message.reply_text(f"🔇 <b>{target.first_name}</b> muted! Shhh... 🤫", parse_mode="HTML")
 
 async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -241,7 +251,7 @@ async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     target = update.message.reply_to_message.from_user
     await context.bot.restrict_chat_member(update.effective_chat.id, target.id, permissions=ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True))
-    await update.message.reply_text(f"🔊 {target.first_name} unmuted! Talk now baby! 🥰")
+    await update.message.reply_text(f"🔊 <b>{target.first_name}</b> unmuted! Talk now baby! 🥰", parse_mode="HTML")
 
 async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -256,9 +266,9 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if count >= 3:
         await context.bot.ban_chat_member(update.effective_chat.id, uid)
         USER_WARNINGS[uid] = 0
-        await update.message.reply_text(f"🔨 {target.first_name} got 3 warnings and banned!")
+        await update.message.reply_text(f"🔨 <b>{target.first_name}</b> got 3 warnings and banned!", parse_mode="HTML")
     else:
-        await update.message.reply_text(f"⚠️ Warning {count}/3 to {target.first_name}! Be good baby! 🥺")
+        await update.message.reply_text(f"⚠️ Warning <b>{count}/3</b> to <b>{target.first_name}</b>! Be good baby! 🥺", parse_mode="HTML")
 
 async def pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -267,13 +277,13 @@ async def pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Reply to a message and use /pin")
         return
     await context.bot.pin_chat_message(update.effective_chat.id, update.message.reply_to_message.message_id)
-    await update.message.reply_text("📌 Pinned!")
+    await update.message.reply_text("📌 <b>Pinned!</b>", parse_mode="HTML")
 
 async def unpin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
         return
     await context.bot.unpin_all_chat_messages(update.effective_chat.id)
-    await update.message.reply_text("📌 Unpinned all!")
+    await update.message.reply_text("📌 <b>Unpinned all!</b>", parse_mode="HTML")
 
 async def purge(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -288,24 +298,22 @@ async def purge(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.delete_message(update.effective_chat.id, msg_id)
         except:
             pass
-    await update.message.reply_text("🧹 Messages cleaned!")
+    await update.message.reply_text("🧹 <b>Messages cleaned!</b>", parse_mode="HTML")
 
 async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    txt = "📜 <b>Group Rules - Pamela's House:</b>\n\n1. Be Kind & Respectful 💖\n2. No Spam / No Links Without Permission 🚫\n3. No Bad Words / No Fighting 🙏\n4. Love Pamela & Subscribe! ❤️🎮\n5. Have Fun!\n\nAdmins can /ban /mute /warn bad users!"
+    txt = "<b>📜 Group Rules - Pamela's House:</b>\n\n<b>1. Be Kind & Respectful 💖</b>\n<b>2. No Spam / No Links Without Permission 🚫</b>\n<b>3. No Bad Words / No Fighting 🙏</b>\n<b>4. Love Pamela & Subscribe My Channel! ❤️🎮</b>\n<b>5. Have Fun!</b>\n\nAdmins can /ban /mute /warn bad users!"
     await update.message.reply_text(txt, parse_mode="HTML")
 
-# --- Welcome New Members ---
 async def welcome_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for user in update.message.new_chat_members:
-        txt = f"🌸✨ <b>Welcome, {user.first_name}!</b> ✨🌸\n\n👋 Hi baby! I am Pamela! 💖\n🎮 I love playing games!\n\n❤️ Subscribe: {CHANNEL_URL}\n\n💬 Tag me and chat with me anytime! 🥰"
+        txt = f"<b>🌸✨ Welcome, {user.first_name}! ✨🌸</b>\n\n<b>👋 Hi baby! I am Pamela! 💖</b>\n<b>🎮 I love playing games!</b>\n\n<b>❤️ Subscribe My Channel:</b> {CHANNEL_URL}\n\n<b>💬 Just type anything, I will reply! 🥰</b>"
         await update.message.reply_text(txt, parse_mode="HTML")
 
-# --- Good Morning / Good Night Auto ---
 async def good_morning(context: ContextTypes.DEFAULT_TYPE):
     if not GROUP_ID:
         return
     try:
-        await context.bot.send_message(chat_id=int(GROUP_ID), text="☀️ <b>Good Morning My Lovelies!</b> 🥰\n\nHave a beautiful day! Love you all! 💖🌸\n\n🎮 Don't forget to watch my videos!", parse_mode="HTML")
+        await context.bot.send_message(chat_id=int(GROUP_ID), text="<b>☀️ Good Morning My Lovelies! 🥰</b>\n\nHave a beautiful day! Love you all! 💖🌸\n\n<b>🎮 Don't forget to watch My Latest Video!</b>", parse_mode="HTML")
     except:
         pass
 
@@ -313,49 +321,60 @@ async def good_night(context: ContextTypes.DEFAULT_TYPE):
     if not GROUP_ID:
         return
     try:
-        await context.bot.send_message(chat_id=int(GROUP_ID), text="🌙 <b>Good Night My Lovelies!</b> 💖\n\nSleep well, sweet dreams! I love you! 🥰✨", parse_mode="HTML")
+        await context.bot.send_message(chat_id=int(GROUP_ID), text="<b>🌙 Good Night My Lovelies! 💖</b>\n\nSleep well, sweet dreams! I love you! 🥰✨", parse_mode="HTML")
     except:
         pass
 
-# --- Chat AI Reply ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None or update.message.text is None:
         return
+    if update.message.from_user and update.message.from_user.is_bot:
+        return
     text = update.message.text
     bot_username = BOT_USERNAME or context.bot.username or ""
-    is_group = update.effective_chat.type in ["group", "supergroup"]
-    if is_group and f"@{bot_username}" not in text:
-        return
     clean_text = text.replace(f"@{bot_username}", "").strip()
     if not clean_text:
         clean_text = "Hi"
     lower = clean_text.lower()
-    if "hi" in lower or "hello" in lower or "hey" in lower:
+    if "hi" in lower or "hello" in lower or "hey" in lower or "hii" in lower:
         reply = "Hiii my love! 🥰💖 How are you? I missed you so much!"
     elif "how are you" in lower:
         reply = "I am doing amazing now that you are talking to me! 🥰 What about you, cutie? 💗"
     elif "love you" in lower or "love u" in lower:
         reply = "Aww I love you too sooo much! ❤️🥰 You are my favourite!"
     elif "subscribe" in lower:
-        reply = f"Thank you baby! ❤️ Please subscribe! 🥰\n{CHANNEL_URL}"
+        reply = f"Thank you baby! ❤️ Please Subscribe My Channel! 🥰\n{CHANNEL_URL}"
     elif "game" in lower or "play" in lower:
         reply = "Yesss! I love playing games! 🎮 What game do you want to play with me?"
-    elif "beautiful" in lower or "cute" in lower or "pretty" in lower:
+    elif "beautiful" in lower or "cute" in lower or "pretty" in lower or "sexy" in lower:
         reply = "Aww stop it! You are making me blush! 🙈💖 You are the cutest!"
     elif "bye" in lower:
         reply = "Nooo don't go! 🥺 Come back soon okay? Love you! 💖"
     elif "who are you" in lower or "your name" in lower:
         reply = "I am Pamela! 🌸 20 years old cute girl from Colombia 🇨🇴 I love playing games!"
-    elif "where are you from" in lower:
+    elif "where are you from" in lower or "where r u from" in lower:
         reply = "I am from Colombia! 🇨🇴 Where are you from, baby? 🥰"
+    elif "good morning" in lower:
+        reply = "Good Morning my love! ☀️🥰 Have a beautiful day!"
+    elif "good night" in lower or "gn" in lower:
+        reply = "Good Night baby! 🌙💖 Sweet dreams! Love you!"
+    elif "miss you" in lower or "miss u" in lower:
+        reply = "I miss you too so much! 🥺💖 Come chat with me everyday okay?"
+    elif "latest" in lower or "new video" in lower:
+        video = get_latest_video()
+        if video:
+            reply = f"<b>🎬MY Latest Video:</b>\n<b>{video['title']}</b> \n\n<b>👇 Watch Now:</b>\n{video['link']}\n\n<b>❤️ Subscribe My Channel :</b>\n{CHANNEL_URL}"
+            await update.message.reply_text(reply, parse_mode="HTML")
+            return
+        else:
+            reply = "Check My Latest Video here baby! 🥰\n" + CHANNEL_URL
     else:
         reply = f"Aww I love talking to you! 🥰💖 Tell me more, what game do you like? 🎮"
     await update.message.reply_text(reply)
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Wow! So cute photo! 😍💖 You look amazing! I love it!")
+    await update.message.reply_text("<b>Wow! So cute photo! 😍💖 You look amazing! I love it!</b>", parse_mode="HTML")
 
-# --- Main - FIXED for Python 3.14 ---
 async def main_async():
     app_builder = ApplicationBuilder().token(TOKEN).build()
     jq = app_builder.job_queue
