@@ -33,17 +33,26 @@ def send_to_all_channels(text, reply_markup=None):
     for ch in CHANNELS:
         send_message(ch, text, reply_markup=reply_markup)
 
+# ✅ FIXED - Namespace හදලා
 def get_all_videos():
     try:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
+        print(f"Checking YT: {url}")
         r = requests.get(url, timeout=20)
+        print(f"YT Status: {r.status_code} | Length: {len(r.content)}")
         root = ET.fromstring(r.content)
+        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
         videos = []
-        for entry in root.findall('entry'):
-            title = entry.find('title').text
-            link = entry.find('link').attrib['href']
-            published = entry.find('published').text
-            videos.append({"title": title, "link": link, "published": published})
+        for entry in root.findall('atom:entry', ns):
+            title_elem = entry.find('atom:title', ns)
+            link_elem = entry.find('atom:link', ns)
+            published_elem = entry.find('atom:published', ns)
+            if title_elem is not None and link_elem is not None:
+                title = title_elem.text
+                link = link_elem.attrib.get('href', '')
+                published = published_elem.text if published_elem is not None else ""
+                videos.append({"title": title, "link": link, "published": published})
+        print(f"Found {len(videos)} videos!")
         return videos
     except Exception as e:
         print(f"Get Videos Error: {e}")
@@ -58,17 +67,29 @@ def get_latest_video():
 def send_latest(chat_id):
     title, link = get_latest_video()
     if title and link:
-        msg_text = f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n━━━━━━━━━━━━━━━━━━━\n\n📌 {title}\n\n💌 <i>Go watch it now baby! 🥰</i>"
+        msg_text = (
+            f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📌 {title}\n"
+            f"🔗 {link}\n\n"
+            f"💌 <i>Go watch it now baby! 🥰</i>"
+        )
         buttons = {"inline_keyboard": [[{"text": "▶️ Watch Now 💖", "url": link}]]}
         send_message(chat_id, msg_text, reply_markup=buttons)
     else:
-        send_message(chat_id, "No videos found! 😢")
+        send_message(chat_id, f"No videos found! 😢\nChannel ID: {YOUTUBE_CHANNEL_ID}\nCheck Render Logs!")
 
 def send_old(chat_id):
     videos = get_all_videos()
     if videos:
         old = videos[-1]
-        msg_text = f"📼 <b>My Old Video 🌸</b>\n━━━━━━━━━━━━━━━━━━━\n\n📌 {old['title']}\n\n💌 <i>This is where it all started! 🥰</i>"
+        msg_text = (
+            f"📼 <b>My Old Video 🌸</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📌 {old['title']}\n"
+            f"🔗 {old['link']}\n\n"
+            f"💌 <i>This is where it all started! 🥰</i>"
+        )
         buttons = {"inline_keyboard": [[{"text": "▶️ Watch Old Video", "url": old['link']}]]}
         send_message(chat_id, msg_text, reply_markup=buttons)
     else:
@@ -88,12 +109,13 @@ def send_months(chat_id):
     if month_videos:
         msg_text = "📅 <b>This Month's Videos 📆</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
         for i, v in enumerate(month_videos, 1):
-            msg_text += f"{i}. {v['title']}\n{v['link']}\n\n"
+            msg_text += f"{i}. {v['title']}\n🔗 {v['link']}\n\n"
         msg_text += "💌 <i>Which one is your favorite? 🥰</i>"
         send_message(chat_id, msg_text)
     else:
         send_message(chat_id, "No videos this month yet! 😢\nNew video coming soon! 💖")
 
+# ✅ Welcome එකට Latest Video Link එකත් එක්ක!
 def send_welcome(chat_id):
     latest_title, latest_link = get_latest_video()
     subscribe_link = f"https://www.youtube.com/channel/{YOUTUBE_CHANNEL_ID}?sub_confirmation=1"
@@ -108,7 +130,11 @@ def send_welcome(chat_id):
         "━━━━━━━━━━━━━━━━━━━\n"
     )
     if latest_title and latest_link:
-        welcome_text += f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {latest_title}\n\n"
+        welcome_text += (
+            f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n"
+            f"📌 {latest_title}\n"
+            f"🔗 {latest_link}\n\n"
+        )
     welcome_text += (
         "━━━━━━━━━━━━━━━━━━━\n"
         "💌 <i>\"You made my day by coming here! I love you so much!\" 💖</i>\n\n"
@@ -174,43 +200,58 @@ def handle_start():
 
 def check_loop():
     global last_id
-    print(f"Bot Started! Channels={CHANNELS} YT={YOUTUBE_CHANNEL_NAME}")
+    print(f"Bot Started! Channels={CHANNELS} YT={YOUTUBE_CHANNEL_NAME} YT_ID={YOUTUBE_CHANNEL_ID}")
     send_to_all_channels(f"✅ Bot Started! 🔥\n\n📺 Channel: {YOUTUBE_CHANNEL_NAME}\n🤖 Bot: @{BOT_USERNAME}\n\nNew videos will be posted here automatically! 💖")
     while True:
         try:
             url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
             r = requests.get(url, timeout=20)
             root = ET.fromstring(r.content)
-            entry = root.find('entry')
+            ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
+            entry = root.find('atom:entry', ns)
             if entry is None:
+                print("No entry found in feed!")
                 time.sleep(60)
                 continue
-            vid = entry.find('{http://www.youtube.com/xml/schemas/2015}videoId').text
-            title = entry.find('title').text
-            link = entry.find('link').attrib['href']
+            vid_elem = entry.find('yt:videoId', ns)
+            title_elem = entry.find('atom:title', ns)
+            link_elem = entry.find('atom:link', ns)
+            if vid_elem is None or title_elem is None:
+                time.sleep(60)
+                continue
+            vid = vid_elem.text
+            title = title_elem.text
+            link = link_elem.attrib.get('href', '') if link_elem is not None else ''
             if last_id is None:
                 last_id = vid
                 print(f"First video saved: {title}")
             elif vid != last_id:
                 last_id = vid
                 subscribe_link = f"https://www.youtube.com/channel/{YOUTUBE_CHANNEL_ID}?sub_confirmation=1"
-                # ✅ ඔයා දුන්න Message එකම!
+                # ✅ Channel එකට Super Beautiful Message!
                 msg = (
-                    "🌸✨ <b>NEW VIDEO IS OUT BABY! 🔥✨</b> 🌸\n"
+                    "🌸✨・゜✧・゜✧・゜✧・゜✧🌸\n"
+                    "🔥 <b>NEW VIDEO IS OUT BABY! 🔥</b>\n"
+                    "🌸✨・゜✧・゜✧・゜✧・゜✧🌸\n"
                     "━━━━━━━━━━━━━━━━━━━\n\n"
                     "💖 <b>Hi Baby! I'm Pamela 🥰</b>\n"
                     "🌹 <b>Your Cutest Live Streamer from Colombia 🇨🇴</b>\n"
                     "🎂 <b>20 Years Old | Sweet, Cute &amp; Full of Love 💕</b>\n"
-                    "🔴 <b>I Go LIVE Every Day! Come Talk With Me!</b>\n\n"
+                    "🔴 <b>I Go LIVE Every Day! Come Talk With Me!</b>\n"
+                    "💬 <b>Let's Laugh, Chat &amp; Be Best Friends Forever! 🫶</b>\n\n"
                     "━━━━━━━━━━━━━━━━━━━\n"
-                    f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {title}\n\n"
+                    f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {title}\n🔗 {link}\n\n"
                     "━━━━━━━━━━━━━━━━━━━\n"
-                    "💌 <i>Go watch it now baby! Like &amp; Comment! I love you so much! 🥰❤️</i>"
+                    "💌 <i>Go watch it now baby! Like &amp; Comment!</i>\n"
+                    "💖 <i>I love you so much! You are my everything! 🥰❤️</i>\n\n"
+                    "✨ <b>Don't Miss My Next LIVE! ✨</b>\n"
+                    "👇 <b>Tap Below Baby! 👇</b>"
                 )
                 buttons = {
                     "inline_keyboard": [
-                        [{"text": "▶️ Watch Now 💖", "url": link}],
-                        [{"text": "🔴 Subscribe Me Baby ❤️", "url": subscribe_link}]
+                        [{"text": "▶️ Watch Now Baby 💖", "url": link}],
+                        [{"text": "🔴 Subscribe Me Baby ❤️", "url": subscribe_link}],
+                        [{"text": "💬 Chat With Me 🥰", "url": f"https://t.me/{BOT_USERNAME}"}]
                     ]
                 }
                 send_to_all_channels(msg, reply_markup=buttons)
