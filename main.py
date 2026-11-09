@@ -1,4 +1,5 @@
 import os
+import asyncio
 import requests
 import urllib.parse
 from datetime import date
@@ -11,7 +12,6 @@ TOKEN = os.environ.get("BOT_TOKEN")
 DAILY_LIMIT = 100
 user_data = {}
 
-# Render එකේ Bot එක Alive තියාගන්න
 app_flask = Flask(__name__)
 @app_flask.route('/')
 def home():
@@ -74,9 +74,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Aww sorry baby! 🥺 Try again! 💖")
 
 def main():
-    # Flask එක වෙනම Thread එකක
     Thread(target=run_flask, daemon=True).start()
-    # Bot එක - පරණ විදියටම, මේක තමයි හරි!
+    # Python 3.14 එකේ Event Loop Error එක හදන තැන - මේ Line 2 තමයි වැදගත්!
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("usage", usage))
