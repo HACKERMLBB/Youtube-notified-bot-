@@ -5,23 +5,25 @@ import xml.etree.ElementTree as ET
 from datetime import time
 from threading import Thread
 from flask import Flask
-from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler, filters
+from telegram import Update, ChatPermissions
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.constants import ParseMode
 
 # --- Config ---
 TOKEN = os.environ.get("BOT_TOKEN")
-GROUP_ID = os.environ.get("GROUP_ID", "")
-CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "UCR4MDIWLNe4p_J-RP0dnS5g")
-CHANNEL_URL = os.environ.get("CHANNEL_URL", "https://www.youtube.com/channel/UCR4MDIWLNe4p_J-RP0dnS5g")
-BOT_USERNAME = os.environ.get("BOT_USERNAME", "")
+GROUP_ID = os.environ.get("GROUP_ID", "")  # Example: -1001234567890
+CHANNEL_ID = "UCl0QgCjLkG8m9rB2xYzQw"
+CHANNEL_URL = "https://youtube.com/@pamela_cullen?si=NAgcuWJptFGxc9I6"
 
 LAST_VIDEO_ID = {"id": None}
 USER_WARNINGS = {}
 
+# --- Flask Keep Alive ---
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Pamela Bot is Alive! Rose + YouTube ✅"
+    return "Pamela Bot is Alive!"
+
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
@@ -30,9 +32,8 @@ def run_flask():
 def get_latest_video():
     try:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
-        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        r = requests.get(url, timeout=10)
         if r.status_code != 200:
-            print(f"RSS Status: {r.status_code}")
             return None
         root = ET.fromstring(r.content)
         ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
@@ -43,7 +44,6 @@ def get_latest_video():
         link = entry.find('atom:link', ns).attrib['href']
         vid_id = entry.find('yt:videoId', ns).text
         author = entry.find('atom:author/atom:name', ns).text
-        print(f"Found: {title}")
         return {"title": title, "link": link, "id": vid_id, "author": author}
     except Exception as e:
         print(f"Error: {e}")
@@ -52,7 +52,7 @@ def get_latest_video():
 def get_videos_list(count=5):
     try:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
-        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        r = requests.get(url, timeout=10)
         root = ET.fromstring(r.content)
         ns = {'atom': 'http://www.w3.org/2005/Atom'}
         videos = []
@@ -64,10 +64,9 @@ def get_videos_list(count=5):
     except:
         return []
 
-# --- ✅ /start - ඒ Rose Bot එකේම Welcome Message එක! ---
+# --- /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = get_latest_video()
-    subscribe_link = f"https://www.youtube.com/channel/{CHANNEL_ID}?sub_confirmation=1"
     if video:
         txt = f"🌸✨ <b>Hello, My Lovelies!</b> ✨🌸\n\n"
         txt += f"👋 <b>Hi, My Name Is Pamela!</b> 💖\n\n"
@@ -79,40 +78,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt += f"❤️ <b>Subscribe:</b>\n{CHANNEL_URL}\n\n🌸 Love You All! 🌸💖"
     else:
         txt = f"🌸✨ <b>Hello, My Lovelies!</b> ✨🌸\n\n👋 <b>Hi, My Name Is Pamela!</b> 💖\n\n🇨🇴 I Am From Colombia\n🎂 I Am 20 Years Old\n🎮 I Love Playing Games\n💗 And I Love You All So Much!\n\n💬 Chat With Me Anytime! 🥰\n\n❤️ Subscribe: {CHANNEL_URL}\n\n🌸 Love You All! 🌸💖"
-    buttons = InlineKeyboardMarkup([
-        [InlineKeyboardButton("▶️ Latest Video 💖", callback_data="latest"), InlineKeyboardButton("📼 Old Video 🌸", callback_data="old")],
-        [InlineKeyboardButton("📅 This Month Videos 📆", callback_data="months")],
-        [InlineKeyboardButton("▶️ Watch Latest on YouTube 🔥", url=video['link'])] if video else [],
-        [InlineKeyboardButton("🔴 Subscribe Me Baby ❤️", url=subscribe_link)]
-    ])
-    await update.message.reply_text(txt, parse_mode="HTML", reply_markup=buttons)
-
-# --- ✅ Button Handler ---
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data == "latest":
-        video = get_latest_video()
-        if video:
-            await query.message.reply_text(f"🎬 <b>Latest Video:</b>\n<b>{video['title']}</b>\n\n👇 <b>Watch Now:</b>\n{video['link']}", parse_mode="HTML")
-        else:
-            await query.message.reply_text("No videos found! 😢")
-    elif query.data == "old":
-        vids = get_videos_list(15)
-        if vids:
-            old = vids[-1]
-            await query.message.reply_text(f"📼 <b>My Old Video 🌸</b>\n\n<b>{old['title']}</b>\n\n{old['link']}", parse_mode="HTML")
-        else:
-            await query.message.reply_text("No videos found! 😢")
-    elif query.data == "months":
-        vids = get_videos_list(10)
-        if vids:
-            txt = "📅 <b>My Recent Videos 📆</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
-            for i, v in enumerate(vids, 1):
-                txt += f"{i}. {v['title']}\n🔗 {v['link']}\n\n"
-            await query.message.reply_text(txt, parse_mode="HTML")
-        else:
-            await query.message.reply_text("No videos this month yet! 😢")
+    await update.message.reply_text(txt, parse_mode="HTML")
 
 # --- YouTube Commands ---
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -147,19 +113,14 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
         return
     if video["id"] != LAST_VIDEO_ID["id"]:
         LAST_VIDEO_ID["id"] = video["id"]
-        subscribe_link = f"https://www.youtube.com/channel/{CHANNEL_ID}?sub_confirmation=1"
         txt = f"🔥🔥 <b>NEW VIDEO OUT NOW!</b> 🔥🔥\n\n🎬 <b>{video['title']}</b>\n\n👇 <b>Watch Now:</b>\n{video['link']}\n\n❤️ Like, Comment &amp; Subscribe! 🥰\n{CHANNEL_URL}"
-        buttons = InlineKeyboardMarkup([
-            [InlineKeyboardButton("▶️ Watch Now Baby 💖", url=video['link'])],
-            [InlineKeyboardButton("🔴 Subscribe Me Baby ❤️", url=subscribe_link)]
-        ])
         try:
-            msg = await context.bot.send_message(chat_id=int(GROUP_ID), text=txt, parse_mode="HTML", reply_markup=buttons)
+            msg = await context.bot.send_message(chat_id=int(GROUP_ID), text=txt, parse_mode="HTML")
             await context.bot.pin_chat_message(chat_id=int(GROUP_ID), message_id=msg.message_id, disable_notification=True)
         except Exception as e:
             print(f"Pin Error: {e}")
 
-# --- Games ---
+# --- Games & Fun ---
 async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt = "🎮 <b>Pamela Game Zone!</b>\n\nChoose a game:\n\n🎲 /dice - Roll a dice\n✂️ /rps rock / paper / scissors\n🔢 /guess - Guess my number (1-10)\n❤️ /love YourName CrushName - Love Calculator\n💬 /quote - Cute Quote"
     await update.message.reply_text(txt, parse_mode="HTML")
@@ -207,7 +168,14 @@ async def love(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(txt, parse_mode="HTML")
 
 async def quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    quotes = ["You are my favourite notification! 💖","Every game is better with you! 🎮❤️","Smile, you are loved by Pamela! 🥰","You make my day brighter! ✨🌸","Never give up, my love! You are strong! 💪💖","You are the cutest player in my game! 🎮💗"]
+    quotes = [
+        "You are my favourite notification! 💖",
+        "Every game is better with you! 🎮❤️",
+        "Smile, you are loved by Pamela! 🥰",
+        "You make my day brighter! ✨🌸",
+        "Never give up, my love! You are strong! 💪💖",
+        "You are the cutest player in my game! 🎮💗"
+    ]
     await update.message.reply_text(f"💬 <b>Pamela Quote:</b>\n\n{random.choice(quotes)}", parse_mode="HTML")
 
 # --- Group Management Like Rose Bot ---
@@ -323,13 +291,13 @@ async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt = "📜 <b>Group Rules - Pamela's House:</b>\n\n1. Be Kind &amp; Respectful 💖\n2. No Spam / No Links Without Permission 🚫\n3. No Bad Words / No Fighting 🙏\n4. Love Pamela &amp; Subscribe! ❤️🎮\n5. Have Fun!\n\nAdmins can /ban /mute /warn bad users!"
     await update.message.reply_text(txt, parse_mode="HTML")
 
-# --- ✅ Welcome New Members - ඒ Rose එකේම Welcome එක! ---
+# --- Welcome New Members ---
 async def welcome_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for user in update.message.new_chat_members:
         txt = f"🌸✨ <b>Welcome, {user.first_name}!</b> ✨🌸\n\n👋 Hi baby! I am Pamela! 💖\n🎮 I love playing games!\n\n❤️ Subscribe: {CHANNEL_URL}\n\n💬 Tag me and chat with me anytime! 🥰"
         await update.message.reply_text(txt, parse_mode="HTML")
 
-# --- Good Morning / Good Night ---
+# --- Good Morning / Good Night Auto ---
 async def good_morning(context: ContextTypes.DEFAULT_TYPE):
     if not GROUP_ID:
         return
@@ -389,6 +357,7 @@ def main():
     Thread(target=run_flask, daemon=True).start()
     app_builder = ApplicationBuilder().token(TOKEN).build()
     jq = app_builder.job_queue
+    # Commands
     app_builder.add_handler(CommandHandler("start", start))
     app_builder.add_handler(CommandHandler("latest", latest))
     app_builder.add_handler(CommandHandler("videos", videos))
@@ -400,6 +369,7 @@ def main():
     app_builder.add_handler(CommandHandler("love", love))
     app_builder.add_handler(CommandHandler("quote", quote))
     app_builder.add_handler(CommandHandler("rules", rules))
+    # Group Management
     app_builder.add_handler(CommandHandler("ban", ban))
     app_builder.add_handler(CommandHandler("unban", unban))
     app_builder.add_handler(CommandHandler("kick", kick))
@@ -409,15 +379,16 @@ def main():
     app_builder.add_handler(CommandHandler("pin", pin))
     app_builder.add_handler(CommandHandler("unpin", unpin))
     app_builder.add_handler(CommandHandler("purge", purge))
-    app_builder.add_handler(CallbackQueryHandler(button_handler))
+    # Welcome & Messages
     app_builder.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new))
     app_builder.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app_builder.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # Jobs
     if jq:
         jq.run_repeating(check_new_video, interval=300, first=10)
         jq.run_daily(good_morning, time=time(hour=6, minute=0))
         jq.run_daily(good_night, time=time(hour=22, minute=0))
-    print("Pamela Bot Started... Rose + YouTube ✅")
+    print("Pamela Bot Started...")
     app_builder.run_polling()
 
 if __name__ == "__main__":
