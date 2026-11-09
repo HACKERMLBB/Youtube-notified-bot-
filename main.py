@@ -13,7 +13,6 @@ CHANNEL_IDS_RAW = os.environ.get("CHANNEL_IDS", "") or os.environ.get("GROUP_ID"
 CHANNEL_IDS = [x.strip() for x in CHANNEL_IDS_RAW.split(",") if x.strip()]
 GROUP_ID = CHANNEL_IDS[0] if CHANNEL_IDS else ""
 
-# ✅ ඔයාගේ ඇත්ත Channel ID URL එකම!
 CHANNEL_URL = "https://www.youtube.com/channel/UCR4MDIWLNe4p_J-RP0dnS5g"
 YOUTUBE_CHANNEL_ID = "UCR4MDIWLNe4p_J-RP0dnS5g"
 
@@ -23,12 +22,11 @@ USER_WARNINGS = {}
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Pamela Bot is Alive! Buttons + Link Thumbnail ✅"
+    return "Pamela Bot is Alive! 1 Min Check + 5 Min Promo ✅"
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-# --- ✅ YouTube - ඔයාගේ ID එකෙන් විතරක්! ---
 def get_latest_video():
     try:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
@@ -43,7 +41,11 @@ def get_latest_video():
         title = entry.find('atom:title', ns).text
         link = entry.find('atom:link', ns).attrib['href']
         vid_id = entry.find('yt:videoId', ns).text
-        return {"title": title, "link": link, "id": vid_id}
+        thumb = entry.find('media:group/media:thumbnail', ns)
+        thumb_url = thumb.get('url') if thumb is not None else ""
+        if thumb_url:
+            thumb_url = thumb_url.replace("hqdefault", "maxresdefault")
+        return {"title": title, "link": link, "id": vid_id, "thumb": thumb_url}
     except Exception as e:
         print(f"Error get_latest: {e}")
         return None
@@ -59,13 +61,16 @@ def get_videos_list(count=5):
             title = entry.find('atom:title', ns).text
             link = entry.find('atom:link', ns).attrib['href']
             vid_id = entry.find('yt:videoId', ns).text
-            videos.append({"title": title, "link": link, "id": vid_id})
+            thumb = entry.find('media:group/media:thumbnail', ns)
+            thumb_url = thumb.get('url') if thumb is not None else ""
+            if thumb_url:
+                thumb_url = thumb_url.replace("hqdefault", "maxresdefault")
+            videos.append({"title": title, "link": link, "id": vid_id, "thumb": thumb_url})
         return videos
     except Exception as e:
         print(f"Error list: {e}")
         return []
 
-# --- ✅ Buttons ---
 def main_keyboard():
     keyboard = [
         [InlineKeyboardButton("🎬 Latest Video", callback_data="latest")],
@@ -81,7 +86,7 @@ def back_keyboard():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = get_latest_video()
-    txt = (
+    txt1 = (
         "🌸✨・゜✧ <b>Welcome to My World</b> ✧゜・✨🌸\n"
         "━━━━━━━━━━━━━━━━━━━\n\n"
         "💖 <b>Hi Baby! I'm Pamela 🥰</b>\n"
@@ -89,28 +94,39 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎂 <b>20 Years Old | Sweet, Cute &amp; Full of Love 💕</b>\n"
         "🔴 <b>I Go LIVE Every Day! Come Talk With Me!</b>\n"
         "💬 <b>Let's Laugh, Chat &amp; Be Best Friends Forever! 🫶</b>\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━━━"
     )
+    await update.message.reply_text(txt1, parse_mode="HTML", disable_web_page_preview=True)
     if video:
-        # ✅ Link එක තනියම Line එකක - එතකොට Link එක යටින් Thumbnail එක වැටෙනවා!
-        txt += f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {video['title']}\n\n👇 <b>Watch Now Baby! 👇</b>\n{video['link']}\n\n"
+        caption = f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {video['title']}\n\n👇 <b>Watch Now Baby! 👇</b>\n{video['link']}"
+        if video.get("thumb"):
+            try:
+                await update.message.reply_photo(photo=video["thumb"], caption=caption, parse_mode="HTML")
+            except:
+                await update.message.reply_text(caption, parse_mode="HTML", disable_web_page_preview=False)
+        else:
+            await update.message.reply_text(caption, parse_mode="HTML", disable_web_page_preview=False)
     else:
-        txt += "🎬 <b>Latest Video:</b>\n😢 Could not find video!\n\n"
-    txt += (
+        await update.message.reply_text("🎬 <b>Latest Video:</b>\n😢 Could not find video!", parse_mode="HTML")
+    txt3 = (
         "━━━━━━━━━━━━━━━━━━━\n"
         "💌 <i>\"You made my day by coming here! I love you so much!\" 💖</i>\n\n"
         "👇 <b>My Videos Are Here Baby! 👇</b>\n\n"
         "💬 <b>You Can Chat With Me Anytime!</b>\nJust tag me in the group and talk to me! 🥰\n\n"
-        f"❤️ <b>Subscribe:</b>\n{CHANNEL_URL}\n\n"
         "🌸 Love You All! 🌸💖"
     )
-    # ✅ disable_web_page_preview=False = Link එකේ Thumbnail එක පෙන්නන්න!
-    await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=main_keyboard())
+    await update.message.reply_text(txt3, parse_mode="HTML", disable_web_page_preview=True, reply_markup=main_keyboard())
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = get_latest_video()
     if video:
         txt = f"🎬 <b>Latest Video:</b>\n<b>{video['title']}</b>\n\n👇 <b>Watch Now:</b>\n{video['link']}"
+        if video.get("thumb"):
+            try:
+                await update.message.reply_photo(photo=video["thumb"], caption=txt, parse_mode="HTML", reply_markup=back_keyboard())
+                return
+            except:
+                pass
         await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
     else:
         await update.message.reply_text("😢 Sorry, I could not find the latest video!")
@@ -123,12 +139,11 @@ async def videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt = "🎬 <b>Latest 5 Videos:</b>\n\n"
     for i, v in enumerate(vids, 1):
         txt += f"{i}. <b>{v['title']}</b>\n{v['link']}\n\n"
-    await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
+    await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=True, reply_markup=back_keyboard())
 
 async def subs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"❤️ <b>Pamela Cullen Channel</b>\n\n🔗 {CHANNEL_URL}\n\nPlease Subscribe &amp; Support Me! 🥰💖\n\nUse /latest to see my newest video!", parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
+    await update.message.reply_text(f"❤️ <b>Pamela Cullen Channel</b>\n\n🔗 {CHANNEL_URL}\n\nPlease Subscribe &amp; Support Me! 🥰💖", parse_mode="HTML", disable_web_page_preview=True, reply_markup=back_keyboard())
 
-# --- ✅ Button Click වුණාම වැඩ කරන එක ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -137,6 +152,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         video = get_latest_video()
         if video:
             txt = f"🎬 <b>Latest Video:</b>\n<b>{video['title']}</b>\n\n👇 <b>Watch Now:</b>\n{video['link']}"
+            if video.get("thumb"):
+                try:
+                    await query.message.reply_photo(photo=video["thumb"], caption=txt, parse_mode="HTML", reply_markup=back_keyboard())
+                    return
+                except:
+                    pass
             await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
         else:
             await query.message.reply_text("😢 No video found!")
@@ -148,7 +169,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt = "🎬 <b>Latest 5 Videos:</b>\n\n"
         for i, v in enumerate(vids, 1):
             txt += f"{i}. <b>{v['title']}</b>\n{v['link']}\n\n"
-        await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
+        await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=True, reply_markup=back_keyboard())
     elif data == "game":
         txt = "🎮 <b>Pamela Game Zone!</b>\n\nChoose a game:\n\n🎲 /dice - Roll a dice\n✂️ /rps rock / paper / scissors\n🔢 /guess - Guess my number (1-10)\n❤️ /love YourName CrushName - Love Calculator\n💬 /quote - Cute Quote"
         await query.message.reply_text(txt, parse_mode="HTML", reply_markup=back_keyboard())
@@ -165,6 +186,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt += "👇 Choose one baby! 👇"
         await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=main_keyboard())
 
+# --- ✅ NEW VIDEO CHECK - විනාඩි 1න් 1ට! ---
 async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
     if not CHANNEL_IDS:
         return
@@ -173,12 +195,10 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
         return
     if LAST_VIDEO_ID["id"] is None:
         LAST_VIDEO_ID["id"] = video["id"]
-        print(f"First Check Saved: {video['title']}")
         return
     if video["id"] != LAST_VIDEO_ID["id"]:
         LAST_VIDEO_ID["id"] = video["id"]
-        print(f"NEW VIDEO! {video['title']}")
-        txt = (
+        txt1 = (
             "🌸✨・゜✧・゜✧・゜✧・゜✧🌸\n"
             "🔥 <b>NEW VIDEO IS OUT BABY! 🔥</b>\n"
             "🌸✨・゜✧・゜✧・゜✧・゜✧🌸\n"
@@ -187,23 +207,77 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
             "🌹 <b>Your Cutest Live Streamer from Colombia 🇨🇴</b>\n"
             "🎂 <b>20 Years Old | Sweet, Cute &amp; Full of Love 💕</b>\n"
             "🔴 <b>I Go LIVE Every Day! Come Talk With Me!</b>\n"
-            "💬 <b>Let's Laugh, Chat &amp; Be Best Friends Forever! 🫶</b>\n\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {video['title']}\n\n👇 <b>Watch Now Baby! 👇</b>\n{video['link']}\n\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "💌 <i>Go watch it now baby! Like &amp; Comment!</i>\n"
-            "💖 <i>I love you so much! You are my everything! 🥰❤️</i>"
+            "💬 <b>Let's Laugh, Chat &amp; Be Best Friends Forever! 🫶</b>"
         )
+        caption2 = f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {video['title']}\n\n👇 <b>Watch Now Baby! 👇</b>\n{video['link']}"
+        txt3 = "━━━━━━━━━━━━━━━━━━━\n💌 <i>Go watch it now baby! Like &amp; Comment!</i>\n💖 <i>I love you so much! You are my everything! 🥰❤️</i>"
         for CH in CHANNEL_IDS:
             try:
-                # ✅ Photo එකක් නෙමෙයි, Text + Link Preview - Thumbnail එක Link එක යටින් වැටෙනවා!
-                msg = await context.bot.send_message(chat_id=int(CH), text=txt, parse_mode="HTML", disable_web_page_preview=False)
+                await context.bot.send_message(chat_id=int(CH), text=txt1, parse_mode="HTML", disable_web_page_preview=True)
+                if video.get("thumb"):
+                    msg = await context.bot.send_photo(chat_id=int(CH), photo=video["thumb"], caption=caption2, parse_mode="HTML")
+                else:
+                    msg = await context.bot.send_message(chat_id=int(CH), text=caption2, parse_mode="HTML", disable_web_page_preview=False)
+                await context.bot.send_message(chat_id=int(CH), text=txt3, parse_mode="HTML", disable_web_page_preview=True)
                 try:
                     await context.bot.pin_chat_message(chat_id=int(CH), message_id=msg.message_id, disable_notification=True)
                 except Exception as e:
-                    print(f"Pin Error for {CH}: {e}")
+                    print(f"Pin Error: {e}")
             except Exception as e:
                 print(f"Send Error to {CH}: {e}")
+
+# --- ✅ NEW! විනාඩි 5න් 5ට යන ලස්සන English Promo එක! ---
+async def promo_message(context: ContextTypes.DEFAULT_TYPE):
+    if not CHANNEL_IDS:
+        return
+    video = get_latest_video()
+    if not video:
+        return
+    promos = [
+        (
+            "🌸✨ <b>Hey My Lovelies! ✨🌸</b>\n\n"
+            f"🎬 <b>Have You Watched My Latest Video Yet?</b>\n📌 {video['title']}\n\n"
+            "💖 <b>Go Watch It Now, My Love!</b>\n"
+            "It would mean the world to me! 🥰\n\n"
+            "👍 <b>Don't Forget To:</b>\n"
+            "❤️ <b>LIKE</b> the video\n"
+            "💬 <b>COMMENT</b> something cute for me\n"
+            "🔔 <b>SUBSCRIBE</b> to my channel\n\n"
+            f"👇 <b>Watch Here Baby! 👇</b>\n{video['link']}\n\n"
+            "💌 <i>I love you all so much! Thank you for supporting me! 🥰❤️</i>"
+        ),
+        (
+            "🔥 <b>Hey Baby! Are You There? 🔥</b>\n\n"
+            f"🎬 <b>My New Video Is Waiting For You!</b>\n📌 {video['title']}\n\n"
+            "🥰 <b>Please Go Watch It Now!</b>\n"
+            "Your love makes my day so special! ✨\n\n"
+            "👇 <b>Click Here To Watch:</b>\n"
+            f"{video['link']}\n\n"
+            "❤️ <b>LIKE + COMMENT + SUBSCRIBE</b>\n"
+            "💖 <i>Every like is a kiss from you to me! 😘</i>"
+        ),
+        (
+            "💖 <b>Hello My Beautiful Family! 💖</b>\n\n"
+            "🌹 <b>I Made Something Special Just For You!</b>\n"
+            f"🎬 {video['title']}\n\n"
+            "✨ <b>Go Watch, Enjoy &amp; Show Me Some Love!</b>\n\n"
+            f"🎥 <b>Watch Now:</b>\n{video['link']}\n\n"
+            "🫶 <b>Please:</b>\n"
+            "👍 LIKE this video\n"
+            "💬 COMMENT your favourite part\n"
+            "🔔 SUBSCRIBE for more cute videos!\n\n"
+            "🌸 <i>Love you forever! - Your Pamela 🥰</i>"
+        ),
+    ]
+    txt = random.choice(promos)
+    for CH in CHANNEL_IDS:
+        try:
+            if video.get("thumb"):
+                await context.bot.send_photo(chat_id=int(CH), photo=video["thumb"], caption=txt, parse_mode="HTML")
+            else:
+                await context.bot.send_message(chat_id=int(CH), text=txt, parse_mode="HTML", disable_web_page_preview=False)
+        except Exception as e:
+            print(f"Promo Error to {CH}: {e}")
 
 async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt = "🎮 <b>Pamela Game Zone!</b>\n\nChoose a game:\n\n🎲 /dice - Roll a dice\n✂️ /rps rock / paper / scissors\n🔢 /guess - Guess my number (1-10)\n❤️ /love YourName CrushName - Love Calculator\n💬 /quote - Cute Quote"
@@ -372,9 +446,14 @@ async def welcome_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
         video = get_latest_video()
         txt = f"🌸✨ <b>Welcome, {user.first_name}!</b> ✨🌸\n\n👋 Hi baby! I am Pamela! 💖\n🎮 I love playing games!\n\n"
         if video:
-            txt += f"🎬 <b>Latest Video:</b>\n{video['title']}\n{video['link']}\n\n"
+            txt += f"🎬 <b>Latest Video:</b>\n{video['title']}\n"
         txt += f"❤️ Subscribe: {CHANNEL_URL}\n\n💬 Tag me and chat with me anytime! 🥰"
-        await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=main_keyboard())
+        await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=True, reply_markup=main_keyboard())
+        if video and video.get("thumb"):
+            try:
+                await update.message.reply_photo(photo=video["thumb"], caption=f"🎬 <b>{video['title']}</b>\n{video['link']}", parse_mode="HTML")
+            except:
+                pass
 
 async def good_morning(context: ContextTypes.DEFAULT_TYPE):
     if not CHANNEL_IDS:
@@ -394,39 +473,49 @@ async def good_night(context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+# --- ✅ Option 2 - Tag නැතුවම Reply! ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None or update.message.text is None:
         return
     text = update.message.text
     bot_username = context.bot.username or ""
-    is_group = update.effective_chat.type in ["group", "supergroup"]
-    if is_group and f"@{bot_username}" not in text:
-        return
     clean_text = text.replace(f"@{bot_username}", "").strip()
     if not clean_text:
         clean_text = "Hi"
     lower = clean_text.lower()
-    if "hi" in lower or "hello" in lower or "hey" in lower:
+    reply = None
+    if "hi" in lower or "hello" in lower or "hey" in lower or "hii" in lower:
         reply = "Hiii my love! 🥰💖 How are you? I missed you so much!"
-    elif "how are you" in lower:
+    elif "how are you" in lower or "how r u" in lower or "wassup" in lower or "whats up" in lower:
         reply = "I am doing amazing now that you are talking to me! 🥰 What about you, cutie? 💗"
-    elif "love you" in lower or "love u" in lower:
+    elif "love you" in lower or "love u" in lower or "i love" in lower:
         reply = "Aww I love you too sooo much! ❤️🥰 You are my favourite!"
-    elif "subscribe" in lower:
+    elif "subscribe" in lower or "sub" in lower:
         reply = f"Thank you baby! ❤️ Please subscribe! 🥰\n{CHANNEL_URL}"
     elif "game" in lower or "play" in lower:
         reply = "Yesss! I love playing games! 🎮 What game do you want to play with me?"
-    elif "beautiful" in lower or "cute" in lower or "pretty" in lower:
+    elif "beautiful" in lower or "cute" in lower or "pretty" in lower or "sexy" in lower or "hot" in lower:
         reply = "Aww stop it! You are making me blush! 🙈💖 You are the cutest!"
-    elif "bye" in lower:
+    elif "bye" in lower or "goodbye" in lower or "see you" in lower:
         reply = "Nooo don't go! 🥺 Come back soon okay? Love you! 💖"
-    elif "who are you" in lower or "your name" in lower:
+    elif "who are you" in lower or "your name" in lower or "who r u" in lower:
         reply = "I am Pamela! 🌸 20 years old cute girl from Colombia 🇨🇴 I love playing games!"
-    elif "where are you from" in lower:
+    elif "where are you from" in lower or "where r u from" in lower:
         reply = "I am from Colombia! 🇨🇴 Where are you from, baby? 🥰"
+    elif "pamela" in lower:
+        reply = "Yes baby? You called me? 🥰💖 I am here! What do you want, my love?"
+    elif "good morning" in lower or "morning" in lower:
+        reply = "Good Morning my love! ☀️🥰 Have a beautiful day! Love you!"
+    elif "good night" in lower or "goodnight" in lower:
+        reply = "Good Night baby! 🌙💖 Sleep well, sweet dreams! I love you!"
+    elif "miss you" in lower or "miss u" in lower:
+        reply = "Aww I miss you too so much baby! 🥺💖 Come hug me!"
+    elif "thank" in lower or "thanks" in lower or "thx" in lower:
+        reply = "Aww you are welcome baby! 🥰💖 Anything for you!"
     else:
-        reply = "Aww I love talking to you! 🥰💖 Tell me more, what game do you like? 🎮"
-    await update.message.reply_text(reply)
+        return
+    if reply:
+        await update.message.reply_text(reply)
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Wow! So cute photo! 😍💖 You look amazing! I love it!")
@@ -460,10 +549,13 @@ def main():
     app_builder.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app_builder.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     if jq:
-        jq.run_repeating(check_new_video, interval=300, first=10)
+        # ✅ විනාඩි 1න් 1ට Check!
+        jq.run_repeating(check_new_video, interval=60, first=10)
+        # ✅ විනාඩි 5න් 5ට Promo!
+        jq.run_repeating(promo_message, interval=300, first=30)
         jq.run_daily(good_morning, time=time(hour=6, minute=0))
         jq.run_daily(good_night, time=time(hour=22, minute=0))
-    print("Pamela Bot Started... Buttons + Link Thumbnail ✅")
+    print("Pamela Bot Started... 1 Min Check + 5 Min Promo ✅")
     app_builder.run_polling()
 
 if __name__ == "__main__":
