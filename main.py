@@ -9,6 +9,7 @@ from threading import Thread
 from flask import Flask
 from telegram import Update, ChatPermissions
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+import time as time_module
 
 TOKEN = os.environ.get("BOT_TOKEN")
 GROUP_ID = os.environ.get("CHANNEL_IDS", "")
@@ -19,6 +20,7 @@ CHANNEL_URL = "https://youtube.com/@pamela_cullen?si=NAgcuWJptFGxc9I6"
 
 LAST_VIDEO_ID = {"id": None}
 USER_WARNINGS = {}
+LAST_AI_CALL = {"time": 0}
 
 app = Flask(__name__)
 @app.route('/')
@@ -63,46 +65,80 @@ def get_videos_list(count=5):
     except:
         return []
 
-# --- AI REPLY - META AI + OPENAI BOTH! FIXED VERSION - NO KEY NEEDED! ---
+# --- AI REPLY - FIXED! FREE MODEL gpt-oss-20b + LLM7 BACKUP - NO KEY! ---
 def get_ai_reply(user_text, user_name="baby"):
+    # Rate Limit: Pollinations එකේ තත්පර 30කට 1යි පුළුවන්, ඒ නිසා ටිකක් ඉන්නවා
+    now = time_module.time()
+    wait = 32 - (now - LAST_AI_CALL["time"])
+    if wait > 0:
+        print(f"Waiting {wait:.1f}s for Pollinations rate limit...")
+        time_module.sleep(wait)
+    LAST_AI_CALL["time"] = time_module.time()
+
+    system_msg = "You are Pamela Cullen, a 20 year old cute, flirty, playful, sweet girl from Colombia. You love playing games, you love your fans so much. You speak in simple, cute English, with lots of emojis like 🥰💖🎮🌸. Keep replies short, max 2 lines, cute and fun. Never say you are AI or Meta AI or Llama or OpenAI. You are Pamela."
     messages = [
-        {"role": "system", "content": "You are Pamela Cullen, a 20 year old cute, flirty, playful, sweet girl from Colombia. You love playing games, you love your fans so much. You speak in simple, cute English, with lots of emojis like 🥰💖🎮🌸. Keep replies short, max 2 lines, cute and fun. Never say you are AI or Meta AI or Llama or OpenAI. You are Pamela."},
+        {"role": "system", "content": system_msg},
         {"role": "user", "content": f"{user_name} said: {user_text}"}
     ]
 
-    # 1. අලුත් විදිය - POST Method (වැඩිපුරම වැඩ කරන එක)
-    for model in ["llama", "openai"]:
-        try:
-            print(f"Trying AI model: {model}")
-            r = requests.post(
-                "https://text.pollinations.ai/openai",
-                json={"model": model, "messages": messages, "max_tokens": 150},
-                timeout=25
-            )
-            print(f"{model} Status: {r.status_code}")
-            if r.status_code == 200:
-                data = r.json()
-                reply = data['choices'][0]['message']['content'].strip()
-                if reply:
-                    print(f"AI Success {model}: {reply}")
-                    return reply[:300]
-        except Exception as e:
-            print(f"{model} POST Error: {e}")
-            continue
-
-    # 2. පරණ විදිය - GET Method (Backup)
+    # 1. Pollinations - අලුත් Free Model එක gpt-oss-20b
     try:
-        prompt = f"You are Pamela, 20 year old cute girl from Colombia. Reply cute short max 2 lines with emojis. User {user_name} said: {user_text}"
+        print(f"Trying Pollinations gpt-oss-20b for: {user_text}")
+        r = requests.post(
+            "https://text.pollinations.ai/openai",
+            json={"model": "gpt-oss-20b", "messages": messages, "max_tokens": 150},
+            timeout=30
+        )
+        print(f"Pollinations Status: {r.status_code}")
+        if r.status_code == 200:
+            data = r.json()
+            reply = data['choices'][0]['message']['content'].strip()
+            # Sponsor text එක අයින් කරනවා
+            if "SPONSOR" in reply:
+                reply = reply.split("SPONSOR")[0].strip()
+            if reply:
+                print(f"AI Success Pollinations: {reply}")
+                return reply[:300]
+        else:
+            print(f"Pollinations Fail: {r.text[:200]}")
+    except Exception as e:
+        print(f"Pollinations Error: {e}")
+
+    # 2. Backup - GET Method (Model නැතුව)
+    try:
+        prompt = f"{system_msg} User {user_name} said: {user_text}. Reply as Pamela:"
         encoded = urllib.parse.quote(prompt)
-        r = requests.get(f"https://text.pollinations.ai/{encoded}?model=llama", timeout=20)
-        if r.status_code == 200 and r.text.strip():
-            return r.text.strip()[:300]
+        r = requests.get(f"https://text.pollinations.ai/{encoded}", timeout=30)
+        print(f"GET Status: {r.status_code}")
+        if r.status_code == 200 and r.text.strip() and "402" not in r.text:
+            reply = r.text.strip()
+            if "SPONSOR" in reply:
+                reply = reply.split("SPONSOR")[0].strip()
+            return reply[:300]
     except Exception as e:
         print(f"GET Error: {e}")
 
+    # 3. Backup 2 - LLM7 Free (Key = unused)
+    try:
+        print("Trying LLM7 backup...")
+        r = requests.post(
+            "https://api.llm7.io/v1/chat/completions",
+            headers={"Authorization": "Bearer unused", "Content-Type": "application/json"},
+            json={"model": "gpt-4o-mini", "messages": messages, "max_tokens": 150},
+            timeout=30
+        )
+        print(f"LLM7 Status: {r.status_code}")
+        if r.status_code == 200:
+            data = r.json()
+            reply = data['choices'][0]['message']['content'].strip()
+            if reply:
+                return reply[:300]
+    except Exception as e:
+        print(f"LLM7 Error: {e}")
+
     return None
 
-# --- /start - BOLD VERSION ---
+# --- /start - ORIGINAL WELCOME - වෙනස් කරලා නෑ! ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = get_latest_video()
     if video:
@@ -376,11 +412,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     clean_text = text.replace(f"@{bot_username}", "").strip()
     if not clean_text:
         return
-
     user_name = update.message.from_user.first_name if update.message.from_user else "baby"
     lower = clean_text.lower()
-
-    # 1. Video / Subscribe
     if "latest" in lower or "new video" in lower:
         video = get_latest_video()
         if video:
@@ -390,14 +423,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "subscribe" in lower:
         await update.message.reply_text(f"Thank you baby! ❤️ Please Subscribe My Channel! 🥰\n{CHANNEL_URL}")
         return
-
-    # 2. AI එකෙන් උත්සාහ කරනවා - Meta AI + OpenAI දෙකම!
     ai_reply = get_ai_reply(clean_text, user_name)
     if ai_reply:
         await update.message.reply_text(ai_reply)
         return
-
-    # 3. AI දෙකම වැඩ නොකලොත් Backup Replies
     if "hi" in lower or "hello" in lower or "hey" in lower or "hii" in lower:
         reply = "Hiii my love! 🥰💖 How are you? I missed you so much!"
     elif "how are you" in lower:
