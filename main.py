@@ -26,7 +26,7 @@ USER_WARNINGS = {}
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Pamela Bot is Alive! 1 Min Check + 5 Min Promo + Website Link ✅"
+    return "Pamela Bot is Alive! 1 Min Check + 5 Min Promo + Website Link + Thumbnail Fixed ✅"
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
@@ -83,6 +83,28 @@ async def send_video_photo(bot, chat_id, thumb, caption, reply_markup=None):
     except Exception as e:
         print(f"Photo send failed, trying text fallback: {e}")
     return await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML", disable_web_page_preview=False, reply_markup=reply_markup)
+
+# ===== NEW! Videos List with Thumbnails =====
+async def send_videos_with_thumbnails(message_obj, is_callback=False):
+    vids = get_videos_list(5)
+    if not vids:
+        txt = "😢 No videos found!" + WEBSITE_TEXT
+        if is_callback:
+            await message_obj.reply_text(txt)
+        else:
+            await message_obj.reply_text(txt)
+        return
+    # Header text first
+    header = "🎬 <b>Latest 5 Videos:</b> 🎬" + WEBSITE_TEXT
+    await message_obj.reply_text(header, parse_mode="HTML", disable_web_page_preview=True)
+    # Then send each video as PHOTO with thumbnail!
+    for i, v in enumerate(vids, 1):
+        caption = f"🎬 <b>{i}. {v['title']}</b>\n\n👇 <b>Watch Now Baby! 👇</b>\n{v['link']}" + WEBSITE_TEXT
+        try:
+            await message_obj.reply_photo(photo=v["thumb"], caption=caption, parse_mode="HTML")
+        except Exception as e:
+            print(f"Video {i} photo failed: {e}")
+            await message_obj.reply_text(caption, parse_mode="HTML", disable_web_page_preview=False)
 
 def main_keyboard():
     keyboard = [
@@ -147,15 +169,7 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("😢 Sorry, I could not find the latest video!" + WEBSITE_TEXT)
 
 async def videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    vids = get_videos_list(5)
-    if not vids:
-        await update.message.reply_text("😢 No videos found!" + WEBSITE_TEXT)
-        return
-    txt = "🎬 <b>Latest 5 Videos:</b>\n\n"
-    for i, v in enumerate(vids, 1):
-        txt += f"{i}. <b>{v['title']}</b>\n{v['link']}\n\n"
-    txt += WEBSITE_TEXT
-    await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=True, reply_markup=back_keyboard())
+    await send_videos_with_thumbnails(update.message)
 
 async def subs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"❤️ <b>Pamela Cullen Channel</b>\n\n🔗 {CHANNEL_URL}\n\nPlease Subscribe &amp; Support Me! 🥰💖" + WEBSITE_TEXT, parse_mode="HTML", disable_web_page_preview=True, reply_markup=back_keyboard())
@@ -177,15 +191,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.message.reply_text("😢 No video found!" + WEBSITE_TEXT)
     elif data == "videos":
-        vids = get_videos_list(5)
-        if not vids:
-            await query.message.reply_text("😢 No videos found!" + WEBSITE_TEXT)
-            return
-        txt = "🎬 <b>Latest 5 Videos:</b>\n\n"
-        for i, v in enumerate(vids, 1):
-            txt += f"{i}. <b>{v['title']}</b>\n{v['link']}\n\n"
-        txt += WEBSITE_TEXT
-        await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=True, reply_markup=back_keyboard())
+        await send_videos_with_thumbnails(query.message, is_callback=True)
+        await query.message.reply_text("👆 <b>Above are the Latest 5 Videos Baby!</b> 🥰" + WEBSITE_TEXT, parse_mode="HTML", reply_markup=back_keyboard())
     elif data == "game":
         txt = "🎮 <b>Pamela Game Zone!</b>\n\nChoose a game:\n\n🎲 /dice - Roll a dice\n✂️ /rps rock / paper / scissors\n🔢 /guess - Guess my number (1-10)\n❤️ /love YourName CrushName - Love Calculator\n💬 /quote - Cute Quote" + WEBSITE_TEXT
         await query.message.reply_text(txt, parse_mode="HTML", reply_markup=back_keyboard())
@@ -566,7 +573,7 @@ def main():
         jq.run_repeating(promo_message, interval=300, first=30)
         jq.run_daily(good_morning, time=time(hour=6, minute=0))
         jq.run_daily(good_night, time=time(hour=22, minute=0))
-    print("Pamela Bot Started... Website Link in All Messages ✅")
+    print("Pamela Bot Started... Website Link + Thumbnail Fixed ✅")
     app_builder.run_polling()
 
 if __name__ == "__main__":
