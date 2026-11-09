@@ -9,16 +9,14 @@ from flask import Flask
 from telegram import Update, ChatPermissions
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-# --- Config - ✅ ඔයා දුන්න Link එකම! කලින් එක වෙනස් නැහැ! ---
 TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL_IDS_RAW = os.environ.get("CHANNEL_IDS", "") or os.environ.get("GROUP_ID", "")
 CHANNEL_IDS = [x.strip() for x in CHANNEL_IDS_RAW.split(",") if x.strip()]
 GROUP_ID = CHANNEL_IDS[0] if CHANNEL_IDS else ""
 
-# ✅ ඔයා දුන්න Link එකම!
-CHANNEL_URL = "https://youtube.com/@pamela_cullen?si=Ug3xBTUBpeahZ2UL"
+# ✅ ඔයාගේ අලුත් Link එකම!
+CHANNEL_URL = "https://youtube.com/@pamela_cullen?si=-D8iNhxVIL0gM1DN"
 YOUTUBE_HANDLE = "pamela_cullen"
-# Fallback එකට පරණ ID එක - Link එකෙන් හොයාගන්න බැරි උනොත් මේකෙන් වැඩ කරනවා
 FALLBACK_CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "UCR4MDIWLNe4p_J-RP0dnS5g")
 
 LAST_VIDEO_ID = {"id": None}
@@ -33,11 +31,9 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-# --- ✅ Link එකෙන්ම Channel ID එක හොයාගන්නවා! ---
 def resolve_channel_id():
     if RESOLVED_CHANNEL_ID["id"]:
         return RESOLVED_CHANNEL_ID["id"]
-    # 1. Handle Page එකෙන් Channel ID එක හොයනවා
     try:
         r = requests.get(f"https://www.youtube.com/@{YOUTUBE_HANDLE}", timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         m = re.search(r'"channelId":"(UC[\w-]{22})"', r.text)
@@ -49,7 +45,6 @@ def resolve_channel_id():
             return m.group(1)
     except Exception as e:
         print(f"Resolve Error: {e}")
-    # 2. හොයාගන්න බැරි නම් Fallback එක
     print(f"Using Fallback ID: {FALLBACK_CHANNEL_ID}")
     RESOLVED_CHANNEL_ID["id"] = FALLBACK_CHANNEL_ID
     return FALLBACK_CHANNEL_ID
@@ -57,7 +52,6 @@ def resolve_channel_id():
 def get_channel_id():
     return resolve_channel_id()
 
-# --- ✅ YouTube Helper - Thumbnail එකත් එක්ක! ---
 def get_latest_video():
     try:
         cid = get_channel_id()
@@ -70,7 +64,6 @@ def get_latest_video():
         ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
         entry = root.find('atom:entry', ns)
         if entry is None:
-            print("No entry in RSS!")
             return None
         title = entry.find('atom:title', ns).text
         link = entry.find('atom:link', ns).attrib['href']
@@ -79,7 +72,6 @@ def get_latest_video():
         thumb_url = thumb.get('url') if thumb is not None else ""
         if thumb_url:
             thumb_url = thumb_url.replace("hqdefault", "maxresdefault")
-        print(f"Found Video: {title} | Thumb: {thumb_url}")
         return {"title": title, "link": link, "id": vid_id, "thumb": thumb_url}
     except Exception as e:
         print(f"Error get_latest: {e}")
@@ -107,7 +99,6 @@ def get_videos_list(count=5):
         print(f"Error list: {e}")
         return []
 
-# --- ✅ /start - කලින් දිග Welcome එකම! ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = get_latest_video()
     txt = (
@@ -167,7 +158,6 @@ async def videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def subs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"❤️ <b>Pamela Cullen Channel</b>\n\n🔗 {CHANNEL_URL}\n\nPlease Subscribe &amp; Support Me! 🥰💖\n\nUse /latest to see my newest video!", parse_mode="HTML")
 
-# --- ✅ Auto Post New Video + Pin + Thumbnail - CHANNEL_IDS ඔක්කොටම! ---
 async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
     if not CHANNEL_IDS:
         return
@@ -176,11 +166,9 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
         return
     if LAST_VIDEO_ID["id"] is None:
         LAST_VIDEO_ID["id"] = video["id"]
-        print(f"First Check Saved: {video['title']}")
         return
     if video["id"] != LAST_VIDEO_ID["id"]:
         LAST_VIDEO_ID["id"] = video["id"]
-        print(f"NEW VIDEO! {video['title']}")
         txt = (
             "🌸✨・゜✧・゜✧・゜✧・゜✧🌸\n"
             "🔥 <b>NEW VIDEO IS OUT BABY! 🔥</b>\n"
