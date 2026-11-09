@@ -5,15 +5,15 @@ import xml.etree.ElementTree as ET
 from datetime import time
 from threading import Thread
 from flask import Flask
-from telegram import Update, ChatPermissions
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 
 TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL_IDS_RAW = os.environ.get("CHANNEL_IDS", "") or os.environ.get("GROUP_ID", "")
 CHANNEL_IDS = [x.strip() for x in CHANNEL_IDS_RAW.split(",") if x.strip()]
 GROUP_ID = CHANNEL_IDS[0] if CHANNEL_IDS else ""
 
-# ✅ ඔයාගේ ඇත්ත Channel ID URL එකම! Handle එක නෙමෙයි!
+# ✅ ඔයාගේ ඇත්ත Channel ID URL එකම!
 CHANNEL_URL = "https://www.youtube.com/channel/UCR4MDIWLNe4p_J-RP0dnS5g"
 YOUTUBE_CHANNEL_ID = "UCR4MDIWLNe4p_J-RP0dnS5g"
 
@@ -23,34 +23,27 @@ USER_WARNINGS = {}
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Pamela Bot is Alive! Rose + Thumbnail ✅"
+    return "Pamela Bot is Alive! Buttons + Link Thumbnail ✅"
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-# --- ✅ YouTube - ඔයාගේ ID එකෙන් විතරක්! Handle එකෙන් හොයන්නේ නැහැ! ---
+# --- ✅ YouTube - ඔයාගේ ID එකෙන් විතරක්! ---
 def get_latest_video():
     try:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
         r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-        print(f"RSS Status: {r.status_code} | Channel ID: {YOUTUBE_CHANNEL_ID}")
         if r.status_code != 200:
             return None
         root = ET.fromstring(r.content)
         ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
         entry = root.find('atom:entry', ns)
         if entry is None:
-            print("No entry in RSS!")
             return None
         title = entry.find('atom:title', ns).text
         link = entry.find('atom:link', ns).attrib['href']
         vid_id = entry.find('yt:videoId', ns).text
-        thumb = entry.find('media:group/media:thumbnail', ns)
-        thumb_url = thumb.get('url') if thumb is not None else ""
-        if thumb_url:
-            thumb_url = thumb_url.replace("hqdefault", "maxresdefault")
-        print(f"Found YOUR Video: {title}")
-        return {"title": title, "link": link, "id": vid_id, "thumb": thumb_url}
+        return {"title": title, "link": link, "id": vid_id}
     except Exception as e:
         print(f"Error get_latest: {e}")
         return None
@@ -66,15 +59,25 @@ def get_videos_list(count=5):
             title = entry.find('atom:title', ns).text
             link = entry.find('atom:link', ns).attrib['href']
             vid_id = entry.find('yt:videoId', ns).text
-            thumb = entry.find('media:group/media:thumbnail', ns)
-            thumb_url = thumb.get('url') if thumb is not None else ""
-            if thumb_url:
-                thumb_url = thumb_url.replace("hqdefault", "maxresdefault")
-            videos.append({"title": title, "link": link, "id": vid_id, "thumb": thumb_url})
+            videos.append({"title": title, "link": link, "id": vid_id})
         return videos
     except Exception as e:
         print(f"Error list: {e}")
         return []
+
+# --- ✅ Buttons ---
+def main_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("🎬 Latest Video", callback_data="latest")],
+        [InlineKeyboardButton("🎥 All Videos", callback_data="videos"), InlineKeyboardButton("❤️ Subscribe", url=CHANNEL_URL)],
+        [InlineKeyboardButton("🎮 Games", callback_data="game"), InlineKeyboardButton("📜 Rules", callback_data="rules")],
+        [InlineKeyboardButton("💬 Chat With Pamela", callback_data="chat")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def back_keyboard():
+    keyboard = [[InlineKeyboardButton("🔙 Back to Menu", callback_data="menu")]]
+    return InlineKeyboardMarkup(keyboard)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = get_latest_video()
@@ -89,7 +92,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━━━━━\n"
     )
     if video:
-        txt += f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {video['title']}\n🔗 {video['link']}\n\n"
+        # ✅ Link එක තනියම Line එකක - එතකොට Link එක යටින් Thumbnail එක වැටෙනවා!
+        txt += f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {video['title']}\n\n👇 <b>Watch Now Baby! 👇</b>\n{video['link']}\n\n"
     else:
         txt += "🎬 <b>Latest Video:</b>\n😢 Could not find video!\n\n"
     txt += (
@@ -100,25 +104,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"❤️ <b>Subscribe:</b>\n{CHANNEL_URL}\n\n"
         "🌸 Love You All! 🌸💖"
     )
-    if video and video.get("thumb"):
-        try:
-            await update.message.reply_photo(photo=video["thumb"], caption=txt, parse_mode="HTML")
-            return
-        except Exception as e:
-            print(f"Photo Send Error in /start: {e}")
-    await update.message.reply_text(txt, parse_mode="HTML")
+    # ✅ disable_web_page_preview=False = Link එකේ Thumbnail එක පෙන්නන්න!
+    await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=main_keyboard())
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = get_latest_video()
     if video:
         txt = f"🎬 <b>Latest Video:</b>\n<b>{video['title']}</b>\n\n👇 <b>Watch Now:</b>\n{video['link']}"
-        if video.get("thumb"):
-            try:
-                await update.message.reply_photo(photo=video["thumb"], caption=txt, parse_mode="HTML")
-                return
-            except:
-                pass
-        await update.message.reply_text(txt, parse_mode="HTML")
+        await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
     else:
         await update.message.reply_text("😢 Sorry, I could not find the latest video!")
 
@@ -130,10 +123,47 @@ async def videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt = "🎬 <b>Latest 5 Videos:</b>\n\n"
     for i, v in enumerate(vids, 1):
         txt += f"{i}. <b>{v['title']}</b>\n{v['link']}\n\n"
-    await update.message.reply_text(txt, parse_mode="HTML")
+    await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
 
 async def subs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"❤️ <b>Pamela Cullen Channel</b>\n\n🔗 {CHANNEL_URL}\n\nPlease Subscribe &amp; Support Me! 🥰💖\n\nUse /latest to see my newest video!", parse_mode="HTML")
+    await update.message.reply_text(f"❤️ <b>Pamela Cullen Channel</b>\n\n🔗 {CHANNEL_URL}\n\nPlease Subscribe &amp; Support Me! 🥰💖\n\nUse /latest to see my newest video!", parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
+
+# --- ✅ Button Click වුණාම වැඩ කරන එක ---
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    if data == "latest":
+        video = get_latest_video()
+        if video:
+            txt = f"🎬 <b>Latest Video:</b>\n<b>{video['title']}</b>\n\n👇 <b>Watch Now:</b>\n{video['link']}"
+            await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
+        else:
+            await query.message.reply_text("😢 No video found!")
+    elif data == "videos":
+        vids = get_videos_list(5)
+        if not vids:
+            await query.message.reply_text("😢 No videos found!")
+            return
+        txt = "🎬 <b>Latest 5 Videos:</b>\n\n"
+        for i, v in enumerate(vids, 1):
+            txt += f"{i}. <b>{v['title']}</b>\n{v['link']}\n\n"
+        await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
+    elif data == "game":
+        txt = "🎮 <b>Pamela Game Zone!</b>\n\nChoose a game:\n\n🎲 /dice - Roll a dice\n✂️ /rps rock / paper / scissors\n🔢 /guess - Guess my number (1-10)\n❤️ /love YourName CrushName - Love Calculator\n💬 /quote - Cute Quote"
+        await query.message.reply_text(txt, parse_mode="HTML", reply_markup=back_keyboard())
+    elif data == "rules":
+        txt = "📜 <b>Group Rules - Pamela's House:</b>\n\n1. Be Kind &amp; Respectful 💖\n2. No Spam / No Links Without Permission 🚫\n3. No Bad Words / No Fighting 🙏\n4. Love Pamela &amp; Subscribe! ❤️🎮\n5. Have Fun!\n\nAdmins can /ban /mute /warn bad users!"
+        await query.message.reply_text(txt, parse_mode="HTML", reply_markup=back_keyboard())
+    elif data == "chat":
+        await query.message.reply_text("Hiii my love! 🥰💖 How are you? I missed you so much! Tell me, what game do you like? 🎮", reply_markup=back_keyboard())
+    elif data == "menu":
+        video = get_latest_video()
+        txt = "🌸 <b>Pamela Menu</b> 🌸\n\n"
+        if video:
+            txt += f"🎬 <b>Latest:</b> {video['title']}\n{video['link']}\n\n"
+        txt += "👇 Choose one baby! 👇"
+        await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=main_keyboard())
 
 async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
     if not CHANNEL_IDS:
@@ -159,17 +189,15 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
             "🔴 <b>I Go LIVE Every Day! Come Talk With Me!</b>\n"
             "💬 <b>Let's Laugh, Chat &amp; Be Best Friends Forever! 🫶</b>\n\n"
             "━━━━━━━━━━━━━━━━━━━\n"
-            f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {video['title']}\n🔗 {video['link']}\n\n"
+            f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {video['title']}\n\n👇 <b>Watch Now Baby! 👇</b>\n{video['link']}\n\n"
             "━━━━━━━━━━━━━━━━━━━\n"
             "💌 <i>Go watch it now baby! Like &amp; Comment!</i>\n"
             "💖 <i>I love you so much! You are my everything! 🥰❤️</i>"
         )
         for CH in CHANNEL_IDS:
             try:
-                if video.get("thumb"):
-                    msg = await context.bot.send_photo(chat_id=int(CH), photo=video["thumb"], caption=txt, parse_mode="HTML")
-                else:
-                    msg = await context.bot.send_message(chat_id=int(CH), text=txt, parse_mode="HTML")
+                # ✅ Photo එකක් නෙමෙයි, Text + Link Preview - Thumbnail එක Link එක යටින් වැටෙනවා!
+                msg = await context.bot.send_message(chat_id=int(CH), text=txt, parse_mode="HTML", disable_web_page_preview=False)
                 try:
                     await context.bot.pin_chat_message(chat_id=int(CH), message_id=msg.message_id, disable_notification=True)
                 except Exception as e:
@@ -341,8 +369,12 @@ async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def welcome_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for user in update.message.new_chat_members:
-        txt = f"🌸✨ <b>Welcome, {user.first_name}!</b> ✨🌸\n\n👋 Hi baby! I am Pamela! 💖\n🎮 I love playing games!\n\n❤️ Subscribe: {CHANNEL_URL}\n\n💬 Tag me and chat with me anytime! 🥰"
-        await update.message.reply_text(txt, parse_mode="HTML")
+        video = get_latest_video()
+        txt = f"🌸✨ <b>Welcome, {user.first_name}!</b> ✨🌸\n\n👋 Hi baby! I am Pamela! 💖\n🎮 I love playing games!\n\n"
+        if video:
+            txt += f"🎬 <b>Latest Video:</b>\n{video['title']}\n{video['link']}\n\n"
+        txt += f"❤️ Subscribe: {CHANNEL_URL}\n\n💬 Tag me and chat with me anytime! 🥰"
+        await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=main_keyboard())
 
 async def good_morning(context: ContextTypes.DEFAULT_TYPE):
     if not CHANNEL_IDS:
@@ -423,6 +455,7 @@ def main():
     app_builder.add_handler(CommandHandler("pin", pin))
     app_builder.add_handler(CommandHandler("unpin", unpin))
     app_builder.add_handler(CommandHandler("purge", purge))
+    app_builder.add_handler(CallbackQueryHandler(button_handler))
     app_builder.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new))
     app_builder.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app_builder.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -430,7 +463,7 @@ def main():
         jq.run_repeating(check_new_video, interval=300, first=10)
         jq.run_daily(good_morning, time=time(hour=6, minute=0))
         jq.run_daily(good_night, time=time(hour=22, minute=0))
-    print("Pamela Bot Started... Rose + Thumbnail + CHANNEL_IDS ✅")
+    print("Pamela Bot Started... Buttons + Link Thumbnail ✅")
     app_builder.run_polling()
 
 if __name__ == "__main__":
