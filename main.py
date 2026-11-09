@@ -1,73 +1,88 @@
 import os
 import requests
 import urllib.parse
-import asyncio
+from datetime import date
 from threading import Thread
 from flask import Flask
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import asyncio
 
 TOKEN = os.environ.get("BOT_TOKEN")
+DAILY_LIMIT = 100
+user_data = {}
 
-app = Flask(__name__)
-@app.route('/')
+# Render එකේ Bot එක Alive තියාගන්න
+app_flask = Flask(__name__)
+@app_flask.route('/')
 def home():
-    return "AI Bot is Alive!"
+    return "Yadanar Bot is Alive! 💖"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
-
-# --- AI - FREE, NO KEY ---
-def get_ai_reply(user_text, user_name="baby"):
-    try:
-        # Pamela වගේ කතා කරන්න කියලා Prompt එක
-        prompt = f"You are Pamela, a 20 year old cute, sweet, playful girl from Colombia. You love chatting. Reply in simple cute English, max 2 lines, with emojis like 🥰💖. User {user_name} said: {user_text}. Reply as Pamela:"
-        encoded = urllib.parse.quote(prompt)
-        # Free Model එක - gpt-oss-20b
-        url = f"https://text.pollinations.ai/{encoded}?model=gpt-oss-20b"
-        r = requests.get(url, timeout=30)
-        print(f"AI Status: {r.status_code}")
-        if r.status_code == 200 and r.text.strip():
-            reply = r.text.strip()
-            # Sponsor text එක තියෙනවා නම් අයින් කරනවා
-            if "SPONSOR" in reply:
-                reply = reply.split("SPONSOR")[0].strip()
-            return reply[:300]
-    except Exception as e:
-        print(f"AI Error: {e}")
-    return None
+    app_flask.run(host="0.0.0.0", port=port)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hiii! 🥰💖 I am Pamela! I am your AI friend! Just type anything and chat with me!")
+    await update.message.reply_text("HI I'M YADANAR💖 you can chat with me.. 💛i'm sweet lovely Myanmar girl")
 
-async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def usage(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    today = str(date.today())
+    if user_id not in user_data or user_data[user_id][0] != today:
+        await update.message.reply_text(f"You used 0/{DAILY_LIMIT} today")
+    else:
+        used = user_data[user_id][1]
+        await update.message.reply_text(f"You used {used}/{DAILY_LIMIT} today\nRemaining: {DAILY_LIMIT - used}")
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None or update.message.text is None:
         return
     if update.message.from_user and update.message.from_user.is_bot:
         return
 
     user_text = update.message.text
+    user_id = update.effective_user.id
     user_name = update.message.from_user.first_name if update.message.from_user else "baby"
+    today = str(date.today())
 
-    # Typing... කියලා පෙන්නනවා
+    if user_id not in user_data or user_data[user_id][0] != today:
+        user_data[user_id] = [today, 0]
+
+    if user_data[user_id][1] >= DAILY_LIMIT:
+        await update.message.reply_text(f"Limit reached ({DAILY_LIMIT}/day). Try tomorrow. Check /usage")
+        return
+
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-    ai_reply = get_ai_reply(user_text, user_name)
-    if ai_reply:
-        await update.message.reply_text(ai_reply)
-    else:
-        # AI වැඩ නොකලොත් විතරක් මේක එනවා
-        await update.message.reply_text(f"Aww I love talking to you {user_name}! 🥰💖 Tell me more!")
+    try:
+        prompt = f"You are Yadanar, a sweet lovely 20 year old Myanmar girl. You are cute, sweet, playful, kind. Reply in simple cute English with emojis like 💖💛🥰. Keep replies short, max 2 lines. Never say you are AI. User {user_name} said: {user_text}"
+        encoded = urllib.parse.quote(prompt)
+        url = f"https://text.pollinations.ai/{encoded}?model=gpt-oss-20b"
+        response = requests.get(url, timeout=30)
+        print(f"AI Status: {response.status_code}")
+
+        if response.status_code == 200 and response.text.strip():
+            bot_reply = response.text.strip()
+            if "SPONSOR" in bot_reply:
+                bot_reply = bot_reply.split("SPONSOR")[0].strip()
+            bot_reply = bot_reply[:3500]
+            user_data[user_id][1] += 1
+            await update.message.reply_text(bot_reply)
+        else:
+            await update.message.reply_text(f"Aww I love talking to you {user_name}! 🥰💖 Tell me more!")
+    except Exception as e:
+        print(f"Error: {e}")
+        await update.message.reply_text(f"Aww sorry baby! 🥺 Try again! 💖")
 
 async def main_async():
-    app_builder = ApplicationBuilder().token(TOKEN).build()
-    app_builder.add_handler(CommandHandler("start", start))
-    app_builder.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
-    print("AI Bot Started...")
-    await app_builder.initialize()
-    await app_builder.start()
-    await app_builder.updater.start_polling()
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("usage", usage))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    print("Bot is running...")
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
     while True:
         await asyncio.sleep(3600)
 
