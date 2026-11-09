@@ -2,48 +2,68 @@ import os, time, requests, threading
 import xml.etree.ElementTree as ET
 from flask import Flask
 
-# ✅ ඔයාගේ නම් වලටම ගැලපෙන විදියට!
 TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_IDS_RAW = os.environ.get("CHANNEL_IDS", "") # -100xxxxxxxxxx, -100yyyyyyyyyy වගේ කීපයක් දාන්නත් පුලුවන්!
+CHANNEL_IDS_RAW = os.environ.get("CHANNEL_IDS", "")
 YOUTUBE_CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID")
 YOUTUBE_CHANNEL_NAME = os.environ.get("YOUTUBE_CHANNEL_NAME", "My Channel")
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "")
 
-# CHANNEL_IDS එකේ කොමා වලින් වෙන් කරලා තියෙන Channel ටික ලිස්ට් එකක් කරනවා
 CHANNELS = [c.strip() for c in CHANNEL_IDS_RAW.split(",") if c.strip()]
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return f"Bot is Alive! ✅ | Channels: {CHANNELS} | YT: {YOUTUBE_CHANNEL_NAME} ({YOUTUBE_CHANNEL_ID}) | Bot: @{BOT_USERNAME}"
+    return f"Bot is Alive! ✅ | Channels: {CHANNELS} | YT: {YOUTUBE_CHANNEL_NAME} | Bot: @{BOT_USERNAME}"
+
+def send_message(chat_id, text):
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            json={"chat_id": chat_id, "text": text},
+            timeout=20
+        )
+        print(f"Sent to {chat_id} | Status: {r.status_code} | {r.text[:300]}")
+        return r.json()
+    except Exception as e:
+        print(f"Send Error to {chat_id}: {e}")
+        return None
 
 def send_to_all_channels(text):
     for ch in CHANNELS:
-        try:
-            r = requests.post(
-                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                json={"chat_id": ch, "text": text},
-                timeout=20
-            )
-            print(f"Sent to {ch} | Status: {r.status_code} | {r.text[:200]}")
-        except Exception as e:
-            print(f"Send Error to {ch}: {e}")
+        send_message(ch, text)
 
 last_id = None
+
+# ✅ /start වලට Reply කරන Function එක!
+def handle_start():
+    offset = None
+    print("Start handler started - listening for /start...")
+    while True:
+        try:
+            url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
+            params = {"timeout": 30}
+            if offset:
+                params["offset"] = offset
+            r = requests.get(url, params=params, timeout=35)
+            data = r.json()
+            if data.get("ok"):
+                for update in data.get("result", []):
+                    offset = update["update_id"] + 1
+                    msg = update.get("message", {})
+                    text = msg.get("text", "")
+                    chat_id = msg.get("chat", {}).get("id")
+                    if text == "/start":
+                        send_message(chat_id, f"👋 Hi! මං {YOUTUBE_CHANNEL_NAME} Channel එකේ Bot! 🔥\n\nඅලුත් Video එකක් ආව ගමන් මං Channel එකට දාන්නම්!\n\n🤖 @{BOT_USERNAME}")
+                        print(f"Replied to /start from {chat_id}")
+        except Exception as e:
+            print(f"Start Handler Error: {e}")
+            time.sleep(5)
 
 def check_loop():
     global last_id
     print(f"Bot Started! Channels={CHANNELS} YT={YOUTUBE_CHANNEL_NAME}")
-
-    # ✅ Welcome Message එක!
-    send_to_all_channels(
-        f"✅ Bot Started! 🔥\n\n"
-        f"📺 Channel: {YOUTUBE_CHANNEL_NAME}\n"
-        f"🤖 Bot: @{BOT_USERNAME}\n\n"
-        f"අලුත් Video එකක් ආව ගමන් මං මෙතනට දාන්නම්! 💖"
-    )
-
+    send_to_all_channels(f"✅ Bot Started! 🔥\n\n📺 Channel: {YOUTUBE_CHANNEL_NAME}\n🤖 Bot: @{BOT_USERNAME}\n\nඅලුත් Video එකක් ආව ගමන් මං මෙතනට දාන්නම්! 💖")
     while True:
         try:
             url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
@@ -51,35 +71,27 @@ def check_loop():
             root = ET.fromstring(r.content)
             entry = root.find('entry')
             if entry is None:
-                print("No video found yet...")
                 time.sleep(600)
                 continue
-
             vid = entry.find('{http://www.youtube.com/xml/schemas/2015}videoId').text
             title = entry.find('title').text
             link = entry.find('link').attrib['href']
-
             if last_id is None:
                 last_id = vid
-                print(f"First video saved: {title} - will NOT send old video")
+                print(f"First video saved: {title}")
             elif vid != last_id:
                 last_id = vid
-                msg = (
-                    f"🔥 NEW VIDEO! 🔥\n\n"
-                    f"📺 {YOUTUBE_CHANNEL_NAME}\n"
-                    f"📌 {title}\n\n"
-                    f"▶️ Watch Now:\n{link}\n\n"
-                    f"🤖 @{BOT_USERNAME}"
-                )
+                msg = f"🔥 NEW VIDEO! 🔥\n\n📺 {YOUTUBE_CHANNEL_NAME}\n📌 {title}\n\n▶️ Watch Now:\n{link}\n\n🤖 @{BOT_USERNAME}"
                 send_to_all_channels(msg)
                 print(f"New video sent: {title}")
             else:
                 print("No new video...")
         except Exception as e:
             print(f"Error: {e}")
-        time.sleep(600) # විනාඩි 10න් 10ට Check කරනවා
+        time.sleep(600)
 
 if __name__ == "__main__":
     threading.Thread(target=check_loop, daemon=True).start()
+    threading.Thread(target=handle_start, daemon=True).start()
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
