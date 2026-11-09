@@ -63,25 +63,43 @@ def get_videos_list(count=5):
     except:
         return []
 
-# --- AI REPLY - META AI + OPENAI BOTH! NO KEY NEEDED! FREE! ---
+# --- AI REPLY - META AI + OPENAI BOTH! FIXED VERSION - NO KEY NEEDED! ---
 def get_ai_reply(user_text, user_name="baby"):
-    prompt = f"You are Pamela Cullen, a 20 year old cute, flirty, playful, sweet girl from Colombia. You love playing games, you love your fans so much. You speak in simple, cute English, with lots of emojis like 🥰💖🎮🌸. You are talking in a Telegram group. Keep replies short, max 2 lines, cute and fun, like a real girlfriend chatting. Never say you are AI or Meta AI or Llama or OpenAI or Pollinations. You are Pamela. User name is {user_name}. User said: {user_text}. Reply as Pamela:"
-    encoded = urllib.parse.quote(prompt)
+    messages = [
+        {"role": "system", "content": "You are Pamela Cullen, a 20 year old cute, flirty, playful, sweet girl from Colombia. You love playing games, you love your fans so much. You speak in simple, cute English, with lots of emojis like 🥰💖🎮🌸. Keep replies short, max 2 lines, cute and fun. Never say you are AI or Meta AI or Llama or OpenAI. You are Pamela."},
+        {"role": "user", "content": f"{user_name} said: {user_text}"}
+    ]
 
-    # 1. මුලින් Meta AI (Llama) 💙, 2. නැත්නම් OpenAI (ChatGPT) 💚
+    # 1. අලුත් විදිය - POST Method (වැඩිපුරම වැඩ කරන එක)
     for model in ["llama", "openai"]:
         try:
-            url = f"https://text.pollinations.ai/{encoded}?model={model}"
-            r = requests.get(url, timeout=20)
-            if r.status_code == 200 and r.text.strip():
-                reply = r.text.strip()
-                if len(reply) > 300:
-                    reply = reply[:300]
-                print(f"AI Reply from {model}: {reply}")
-                return reply
+            print(f"Trying AI model: {model}")
+            r = requests.post(
+                "https://text.pollinations.ai/openai",
+                json={"model": model, "messages": messages, "max_tokens": 150},
+                timeout=25
+            )
+            print(f"{model} Status: {r.status_code}")
+            if r.status_code == 200:
+                data = r.json()
+                reply = data['choices'][0]['message']['content'].strip()
+                if reply:
+                    print(f"AI Success {model}: {reply}")
+                    return reply[:300]
         except Exception as e:
-            print(f"{model} Error: {e}")
+            print(f"{model} POST Error: {e}")
             continue
+
+    # 2. පරණ විදිය - GET Method (Backup)
+    try:
+        prompt = f"You are Pamela, 20 year old cute girl from Colombia. Reply cute short max 2 lines with emojis. User {user_name} said: {user_text}"
+        encoded = urllib.parse.quote(prompt)
+        r = requests.get(f"https://text.pollinations.ai/{encoded}?model=llama", timeout=20)
+        if r.status_code == 200 and r.text.strip():
+            return r.text.strip()[:300]
+    except Exception as e:
+        print(f"GET Error: {e}")
+
     return None
 
 # --- /start - BOLD VERSION ---
@@ -362,7 +380,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.message.from_user.first_name if update.message.from_user else "baby"
     lower = clean_text.lower()
 
-    # 1. Video / Subscribe - AI එකට යවන්නේ නෑ, කෙලින්ම Video එවනවා
+    # 1. Video / Subscribe
     if "latest" in lower or "new video" in lower:
         video = get_latest_video()
         if video:
