@@ -1,4 +1,5 @@
 import os
+import re
 import random
 import requests
 import xml.etree.ElementTree as ET
@@ -7,84 +8,149 @@ from threading import Thread
 from flask import Flask
 from telegram import Update, ChatPermissions
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-from telegram.constants import ParseMode
 
-# --- Config ---
+# --- Config - ✅ ඔයා දුන්න Link එකම! කලින් එක වෙනස් නැහැ! ---
 TOKEN = os.environ.get("BOT_TOKEN")
-GROUP_ID = os.environ.get("GROUP_ID", "")  # Example: -1001234567890
-CHANNEL_ID = "UCl0QgCjLkG8m9rB2xYzQw"
-CHANNEL_URL = "https://youtube.com/@pamela_cullen?si=NAgcuWJptFGxc9I6"
+CHANNEL_IDS_RAW = os.environ.get("CHANNEL_IDS", "") or os.environ.get("GROUP_ID", "")
+CHANNEL_IDS = [x.strip() for x in CHANNEL_IDS_RAW.split(",") if x.strip()]
+GROUP_ID = CHANNEL_IDS[0] if CHANNEL_IDS else ""
+
+# ✅ ඔයා දුන්න Link එකම!
+CHANNEL_URL = "https://youtube.com/@pamela_cullen?si=Ug3xBTUBpeahZ2UL"
+YOUTUBE_HANDLE = "pamela_cullen"
+# Fallback එකට පරණ ID එක - Link එකෙන් හොයාගන්න බැරි උනොත් මේකෙන් වැඩ කරනවා
+FALLBACK_CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "UCR4MDIWLNe4p_J-RP0dnS5g")
 
 LAST_VIDEO_ID = {"id": None}
 USER_WARNINGS = {}
+RESOLVED_CHANNEL_ID = {"id": None}
 
-# --- Flask Keep Alive ---
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Pamela Bot is Alive!"
-
+    return "Pamela Bot is Alive! Rose + Thumbnail ✅"
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-# --- YouTube Helper ---
+# --- ✅ Link එකෙන්ම Channel ID එක හොයාගන්නවා! ---
+def resolve_channel_id():
+    if RESOLVED_CHANNEL_ID["id"]:
+        return RESOLVED_CHANNEL_ID["id"]
+    # 1. Handle Page එකෙන් Channel ID එක හොයනවා
+    try:
+        r = requests.get(f"https://www.youtube.com/@{YOUTUBE_HANDLE}", timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        m = re.search(r'"channelId":"(UC[\w-]{22})"', r.text)
+        if not m:
+            m = re.search(r'/channel/(UC[\w-]{22})', r.text)
+        if m:
+            RESOLVED_CHANNEL_ID["id"] = m.group(1)
+            print(f"✅ Resolved Channel ID from Link: {m.group(1)}")
+            return m.group(1)
+    except Exception as e:
+        print(f"Resolve Error: {e}")
+    # 2. හොයාගන්න බැරි නම් Fallback එක
+    print(f"Using Fallback ID: {FALLBACK_CHANNEL_ID}")
+    RESOLVED_CHANNEL_ID["id"] = FALLBACK_CHANNEL_ID
+    return FALLBACK_CHANNEL_ID
+
+def get_channel_id():
+    return resolve_channel_id()
+
+# --- ✅ YouTube Helper - Thumbnail එකත් එක්ක! ---
 def get_latest_video():
     try:
-        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
-        r = requests.get(url, timeout=10)
+        cid = get_channel_id()
+        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
+        r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        print(f"RSS Status: {r.status_code} | Channel: {cid} | Link: {CHANNEL_URL}")
         if r.status_code != 200:
             return None
         root = ET.fromstring(r.content)
-        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
+        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
         entry = root.find('atom:entry', ns)
         if entry is None:
+            print("No entry in RSS!")
             return None
         title = entry.find('atom:title', ns).text
         link = entry.find('atom:link', ns).attrib['href']
         vid_id = entry.find('yt:videoId', ns).text
-        author = entry.find('atom:author/atom:name', ns).text
-        return {"title": title, "link": link, "id": vid_id, "author": author}
+        thumb = entry.find('media:group/media:thumbnail', ns)
+        thumb_url = thumb.get('url') if thumb is not None else ""
+        if thumb_url:
+            thumb_url = thumb_url.replace("hqdefault", "maxresdefault")
+        print(f"Found Video: {title} | Thumb: {thumb_url}")
+        return {"title": title, "link": link, "id": vid_id, "thumb": thumb_url}
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error get_latest: {e}")
         return None
 
 def get_videos_list(count=5):
     try:
-        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
-        r = requests.get(url, timeout=10)
+        cid = get_channel_id()
+        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
+        r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         root = ET.fromstring(r.content)
-        ns = {'atom': 'http://www.w3.org/2005/Atom'}
+        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
         videos = []
         for entry in root.findall('atom:entry', ns)[:count]:
             title = entry.find('atom:title', ns).text
             link = entry.find('atom:link', ns).attrib['href']
-            videos.append({"title": title, "link": link})
+            vid_id = entry.find('yt:videoId', ns).text
+            thumb = entry.find('media:group/media:thumbnail', ns)
+            thumb_url = thumb.get('url') if thumb is not None else ""
+            if thumb_url:
+                thumb_url = thumb_url.replace("hqdefault", "maxresdefault")
+            videos.append({"title": title, "link": link, "id": vid_id, "thumb": thumb_url})
         return videos
-    except:
+    except Exception as e:
+        print(f"Error list: {e}")
         return []
 
-# --- /start ---
+# --- ✅ /start - කලින් දිග Welcome එකම! ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = get_latest_video()
+    txt = (
+        "🌸✨・゜✧ <b>Welcome to My World</b> ✧゜・✨🌸\n"
+        "━━━━━━━━━━━━━━━━━━━\n\n"
+        "💖 <b>Hi Baby! I'm Pamela 🥰</b>\n"
+        "🌹 <b>Your Cutest Live Streamer from Colombia 🇨🇴</b>\n"
+        "🎂 <b>20 Years Old | Sweet, Cute &amp; Full of Love 💕</b>\n"
+        "🔴 <b>I Go LIVE Every Day! Come Talk With Me!</b>\n"
+        "💬 <b>Let's Laugh, Chat &amp; Be Best Friends Forever! 🫶</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+    )
     if video:
-        txt = f"🌸✨ <b>Hello, My Lovelies!</b> ✨🌸\n\n"
-        txt += f"👋 <b>Hi, My Name Is Pamela!</b> 💖\n\n"
-        txt += f"🇨🇴 I Am From Colombia\n🎂 I Am 20 Years Old\n🎮 I Love Playing Games\n💗 And I Love You All So Much!\n\n"
-        txt += f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        txt += f"🎬 <b>Latest Video:</b>\n<b>{video['title']}</b>\n\n👇 <b>Watch Now:</b>\n{video['link']}\n\n"
-        txt += f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        txt += f"💬 <b>You Can Chat With Me Anytime!</b>\nJust tag me in the group and talk to me! 🥰\n\n"
-        txt += f"❤️ <b>Subscribe:</b>\n{CHANNEL_URL}\n\n🌸 Love You All! 🌸💖"
+        txt += f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {video['title']}\n🔗 {video['link']}\n\n"
     else:
-        txt = f"🌸✨ <b>Hello, My Lovelies!</b> ✨🌸\n\n👋 <b>Hi, My Name Is Pamela!</b> 💖\n\n🇨🇴 I Am From Colombia\n🎂 I Am 20 Years Old\n🎮 I Love Playing Games\n💗 And I Love You All So Much!\n\n💬 Chat With Me Anytime! 🥰\n\n❤️ Subscribe: {CHANNEL_URL}\n\n🌸 Love You All! 🌸💖"
+        txt += "🎬 <b>Latest Video:</b>\n😢 Could not find video!\n\n"
+    txt += (
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "💌 <i>\"You made my day by coming here! I love you so much!\" 💖</i>\n\n"
+        "👇 <b>My Videos Are Here Baby! 👇</b>\n\n"
+        "💬 <b>You Can Chat With Me Anytime!</b>\nJust tag me in the group and talk to me! 🥰\n\n"
+        f"❤️ <b>Subscribe:</b>\n{CHANNEL_URL}\n\n"
+        "🌸 Love You All! 🌸💖"
+    )
+    if video and video.get("thumb"):
+        try:
+            await update.message.reply_photo(photo=video["thumb"], caption=txt, parse_mode="HTML")
+            return
+        except Exception as e:
+            print(f"Photo Send Error in /start: {e}")
     await update.message.reply_text(txt, parse_mode="HTML")
 
-# --- YouTube Commands ---
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = get_latest_video()
     if video:
-        await update.message.reply_text(f"🎬 <b>Latest Video:</b>\n<b>{video['title']}</b>\n\n{video['link']}", parse_mode="HTML")
+        txt = f"🎬 <b>Latest Video:</b>\n<b>{video['title']}</b>\n\n👇 <b>Watch Now:</b>\n{video['link']}"
+        if video.get("thumb"):
+            try:
+                await update.message.reply_photo(photo=video["thumb"], caption=txt, parse_mode="HTML")
+                return
+            except:
+                pass
+        await update.message.reply_text(txt, parse_mode="HTML")
     else:
         await update.message.reply_text("😢 Sorry, I could not find the latest video!")
 
@@ -101,26 +167,49 @@ async def videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def subs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"❤️ <b>Pamela Cullen Channel</b>\n\n🔗 {CHANNEL_URL}\n\nPlease Subscribe &amp; Support Me! 🥰💖\n\nUse /latest to see my newest video!", parse_mode="HTML")
 
-# --- Auto Post New Video + Pin ---
+# --- ✅ Auto Post New Video + Pin + Thumbnail - CHANNEL_IDS ඔක්කොටම! ---
 async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
-    if not GROUP_ID:
+    if not CHANNEL_IDS:
         return
     video = get_latest_video()
     if not video:
         return
     if LAST_VIDEO_ID["id"] is None:
         LAST_VIDEO_ID["id"] = video["id"]
+        print(f"First Check Saved: {video['title']}")
         return
     if video["id"] != LAST_VIDEO_ID["id"]:
         LAST_VIDEO_ID["id"] = video["id"]
-        txt = f"🔥🔥 <b>NEW VIDEO OUT NOW!</b> 🔥🔥\n\n🎬 <b>{video['title']}</b>\n\n👇 <b>Watch Now:</b>\n{video['link']}\n\n❤️ Like, Comment &amp; Subscribe! 🥰\n{CHANNEL_URL}"
-        try:
-            msg = await context.bot.send_message(chat_id=int(GROUP_ID), text=txt, parse_mode="HTML")
-            await context.bot.pin_chat_message(chat_id=int(GROUP_ID), message_id=msg.message_id, disable_notification=True)
-        except Exception as e:
-            print(f"Pin Error: {e}")
+        print(f"NEW VIDEO! {video['title']}")
+        txt = (
+            "🌸✨・゜✧・゜✧・゜✧・゜✧🌸\n"
+            "🔥 <b>NEW VIDEO IS OUT BABY! 🔥</b>\n"
+            "🌸✨・゜✧・゜✧・゜✧・゜✧🌸\n"
+            "━━━━━━━━━━━━━━━━━━━\n\n"
+            "💖 <b>Hi Baby! I'm Pamela 🥰</b>\n"
+            "🌹 <b>Your Cutest Live Streamer from Colombia 🇨🇴</b>\n"
+            "🎂 <b>20 Years Old | Sweet, Cute &amp; Full of Love 💕</b>\n"
+            "🔴 <b>I Go LIVE Every Day! Come Talk With Me!</b>\n"
+            "💬 <b>Let's Laugh, Chat &amp; Be Best Friends Forever! 🫶</b>\n\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {video['title']}\n🔗 {video['link']}\n\n"
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "💌 <i>Go watch it now baby! Like &amp; Comment!</i>\n"
+            "💖 <i>I love you so much! You are my everything! 🥰❤️</i>"
+        )
+        for CH in CHANNEL_IDS:
+            try:
+                if video.get("thumb"):
+                    msg = await context.bot.send_photo(chat_id=int(CH), photo=video["thumb"], caption=txt, parse_mode="HTML")
+                else:
+                    msg = await context.bot.send_message(chat_id=int(CH), text=txt, parse_mode="HTML")
+                try:
+                    await context.bot.pin_chat_message(chat_id=int(CH), message_id=msg.message_id, disable_notification=True)
+                except Exception as e:
+                    print(f"Pin Error for {CH}: {e}")
+            except Exception as e:
+                print(f"Send Error to {CH}: {e}")
 
-# --- Games & Fun ---
 async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt = "🎮 <b>Pamela Game Zone!</b>\n\nChoose a game:\n\n🎲 /dice - Roll a dice\n✂️ /rps rock / paper / scissors\n🔢 /guess - Guess my number (1-10)\n❤️ /love YourName CrushName - Love Calculator\n💬 /quote - Cute Quote"
     await update.message.reply_text(txt, parse_mode="HTML")
@@ -168,17 +257,9 @@ async def love(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(txt, parse_mode="HTML")
 
 async def quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    quotes = [
-        "You are my favourite notification! 💖",
-        "Every game is better with you! 🎮❤️",
-        "Smile, you are loved by Pamela! 🥰",
-        "You make my day brighter! ✨🌸",
-        "Never give up, my love! You are strong! 💪💖",
-        "You are the cutest player in my game! 🎮💗"
-    ]
+    quotes = ["You are my favourite notification! 💖","Every game is better with you! 🎮❤️","Smile, you are loved by Pamela! 🥰","You make my day brighter! ✨🌸","Never give up, my love! You are strong! 💪💖","You are the cutest player in my game! 🎮💗"]
     await update.message.reply_text(f"💬 <b>Pamela Quote:</b>\n\n{random.choice(quotes)}", parse_mode="HTML")
 
-# --- Group Management Like Rose Bot ---
 async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         member = await context.bot.get_chat_member(update.effective_chat.id, update.effective_user.id)
@@ -291,30 +372,29 @@ async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt = "📜 <b>Group Rules - Pamela's House:</b>\n\n1. Be Kind &amp; Respectful 💖\n2. No Spam / No Links Without Permission 🚫\n3. No Bad Words / No Fighting 🙏\n4. Love Pamela &amp; Subscribe! ❤️🎮\n5. Have Fun!\n\nAdmins can /ban /mute /warn bad users!"
     await update.message.reply_text(txt, parse_mode="HTML")
 
-# --- Welcome New Members ---
 async def welcome_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for user in update.message.new_chat_members:
         txt = f"🌸✨ <b>Welcome, {user.first_name}!</b> ✨🌸\n\n👋 Hi baby! I am Pamela! 💖\n🎮 I love playing games!\n\n❤️ Subscribe: {CHANNEL_URL}\n\n💬 Tag me and chat with me anytime! 🥰"
         await update.message.reply_text(txt, parse_mode="HTML")
 
-# --- Good Morning / Good Night Auto ---
 async def good_morning(context: ContextTypes.DEFAULT_TYPE):
-    if not GROUP_ID:
+    if not CHANNEL_IDS:
         return
-    try:
-        await context.bot.send_message(chat_id=int(GROUP_ID), text="☀️ <b>Good Morning My Lovelies!</b> 🥰\n\nHave a beautiful day! Love you all! 💖🌸\n\n🎮 Don't forget to watch my videos!", parse_mode="HTML")
-    except:
-        pass
+    for CH in CHANNEL_IDS:
+        try:
+            await context.bot.send_message(chat_id=int(CH), text="☀️ <b>Good Morning My Lovelies!</b> 🥰\n\nHave a beautiful day! Love you all! 💖🌸\n\n🎮 Don't forget to watch my videos!", parse_mode="HTML")
+        except:
+            pass
 
 async def good_night(context: ContextTypes.DEFAULT_TYPE):
-    if not GROUP_ID:
+    if not CHANNEL_IDS:
         return
-    try:
-        await context.bot.send_message(chat_id=int(GROUP_ID), text="🌙 <b>Good Night My Lovelies!</b> 💖\n\nSleep well, sweet dreams! I love you! 🥰✨", parse_mode="HTML")
-    except:
-        pass
+    for CH in CHANNEL_IDS:
+        try:
+            await context.bot.send_message(chat_id=int(CH), text="🌙 <b>Good Night My Lovelies!</b> 💖\n\nSleep well, sweet dreams! I love you! 🥰✨", parse_mode="HTML")
+        except:
+            pass
 
-# --- Chat AI Reply ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message is None or update.message.text is None:
         return
@@ -352,12 +432,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Wow! So cute photo! 😍💖 You look amazing! I love it!")
 
-# --- Main ---
 def main():
     Thread(target=run_flask, daemon=True).start()
     app_builder = ApplicationBuilder().token(TOKEN).build()
     jq = app_builder.job_queue
-    # Commands
     app_builder.add_handler(CommandHandler("start", start))
     app_builder.add_handler(CommandHandler("latest", latest))
     app_builder.add_handler(CommandHandler("videos", videos))
@@ -369,7 +447,6 @@ def main():
     app_builder.add_handler(CommandHandler("love", love))
     app_builder.add_handler(CommandHandler("quote", quote))
     app_builder.add_handler(CommandHandler("rules", rules))
-    # Group Management
     app_builder.add_handler(CommandHandler("ban", ban))
     app_builder.add_handler(CommandHandler("unban", unban))
     app_builder.add_handler(CommandHandler("kick", kick))
@@ -379,16 +456,14 @@ def main():
     app_builder.add_handler(CommandHandler("pin", pin))
     app_builder.add_handler(CommandHandler("unpin", unpin))
     app_builder.add_handler(CommandHandler("purge", purge))
-    # Welcome & Messages
     app_builder.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new))
     app_builder.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app_builder.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    # Jobs
     if jq:
         jq.run_repeating(check_new_video, interval=300, first=10)
         jq.run_daily(good_morning, time=time(hour=6, minute=0))
         jq.run_daily(good_night, time=time(hour=22, minute=0))
-    print("Pamela Bot Started...")
+    print("Pamela Bot Started... Rose + Thumbnail + CHANNEL_IDS ✅")
     app_builder.run_polling()
 
 if __name__ == "__main__":
