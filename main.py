@@ -57,7 +57,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         prompt = f"You are Yadanar, a sweet lovely 20 year old Myanmar girl. You are cute, sweet, playful, kind. Reply in simple cute English with emojis like 💖💛🥰. Keep replies short, max 2 lines. Never say you are AI. User {user_name} said: {user_text}"
         encoded = urllib.parse.quote(prompt)
-        url = f"https://text.pollinations.ai/{encoded}?model=gpt-oss-20b"
+        # Model එක නෑ - ඔයාගේ පරණ විදියටම!
+        url = f"https://text.pollinations.ai/{encoded}"
         response = requests.get(url, timeout=30)
         print(f"AI Status: {response.status_code}")
 
