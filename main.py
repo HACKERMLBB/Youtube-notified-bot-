@@ -16,29 +16,45 @@ app = Flask(__name__)
 def home():
     return f"Bot is Alive! ✅ | Channels: {CHANNELS} | YT: {YOUTUBE_CHANNEL_NAME} | Bot: @{BOT_USERNAME}"
 
-def send_message(chat_id, text):
+def send_message(chat_id, text, reply_markup=None):
     try:
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
         r = requests.post(
             f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={"chat_id": chat_id, "text": text},
+            json=payload,
             timeout=20
         )
-        print(f"Sent to {chat_id} | Status: {r.status_code} | {r.text[:300]}")
+        print(f"Sent to {chat_id} | Status: {r.status_code}")
         return r.json()
     except Exception as e:
-        print(f"Send Error to {chat_id}: {e}")
+        print(f"Send Error: {e}")
         return None
 
 def send_to_all_channels(text):
     for ch in CHANNELS:
         send_message(ch, text)
 
+def get_latest_video():
+    try:
+        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
+        r = requests.get(url, timeout=20)
+        root = ET.fromstring(r.content)
+        entry = root.find('entry')
+        if entry is None:
+            return None, None
+        vid_title = entry.find('title').text
+        vid_link = entry.find('link').attrib['href']
+        return vid_title, vid_link
+    except Exception as e:
+        print(f"Get Latest Error: {e}")
+        return None, None
+
 last_id = None
 
-# ✅ /start වලට Reply කරන Function එක!
 def handle_start():
     offset = None
-    print("Start handler started - listening for /start...")
     while True:
         try:
             url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
@@ -54,8 +70,38 @@ def handle_start():
                     text = msg.get("text", "")
                     chat_id = msg.get("chat", {}).get("id")
                     if text == "/start":
-                        send_message(chat_id, f"👋 Hi! මං {YOUTUBE_CHANNEL_NAME} Channel එකේ Bot! 🔥\n\nඅලුත් Video එකක් ආව ගමන් මං Channel එකට දාන්නම්!\n\n🤖 @{BOT_USERNAME}")
-                        print(f"Replied to /start from {chat_id}")
+                        latest_title, latest_link = get_latest_video()
+                        subscribe_link = f"https://www.youtube.com/channel/{YOUTUBE_CHANNEL_ID}?sub_confirmation=1"
+
+                        welcome_text = (
+                            "✨ <b>Hi there! 👋</b> ✨\n"
+                            "━━━━━━━━━━━━━━━\n\n"
+                            "💖 <b>I'm Pamela</b>\n"
+                            "🌎 <b>I'm from Colombia</b> 🇨🇴\n"
+                            "🎂 <b>I'm 20 years old</b> 🎉\n"
+                            "🎮 <b>I love playing games!</b> 🕹️\n\n"
+                            "━━━━━━━━━━━━━━━\n"
+                        )
+                        if latest_title and latest_link:
+                            welcome_text += (
+                                f"🎬 <b>My Latest Video:</b>\n"
+                                f"📌 {latest_title}\n\n"
+                            )
+                        
+                        welcome_text += (
+                            "━━━━━━━━━━━━━━━\n"
+                            "💬 <i>Nice to meet you! 🥰</i>"
+                        )
+
+                        buttons = {
+                            "inline_keyboard": [
+                                [{"text": "▶️ Watch Latest Video", "url": latest_link}] if latest_link else [],
+                                [{"text": "🔴 Subscribe My YouTube Channel ❤️", "url": subscribe_link}]
+                            ]
+                        }
+                        buttons["inline_keyboard"] = [row for row in buttons["inline_keyboard"] if row]
+
+                        send_message(chat_id, welcome_text, reply_markup=buttons)
         except Exception as e:
             print(f"Start Handler Error: {e}")
             time.sleep(5)
@@ -63,7 +109,7 @@ def handle_start():
 def check_loop():
     global last_id
     print(f"Bot Started! Channels={CHANNELS} YT={YOUTUBE_CHANNEL_NAME}")
-    send_to_all_channels(f"✅ Bot Started! 🔥\n\n📺 Channel: {YOUTUBE_CHANNEL_NAME}\n🤖 Bot: @{BOT_USERNAME}\n\nඅලුත් Video එකක් ආව ගමන් මං මෙතනට දාන්නම්! 💖")
+    send_to_all_channels(f"✅ Bot Started! 🔥\n\n📺 Channel: {YOUTUBE_CHANNEL_NAME}\n🤖 Bot: @{BOT_USERNAME}\n\nNew videos will be posted here automatically! 💖")
     while True:
         try:
             url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
@@ -83,7 +129,6 @@ def check_loop():
                 last_id = vid
                 msg = f"🔥 NEW VIDEO! 🔥\n\n📺 {YOUTUBE_CHANNEL_NAME}\n📌 {title}\n\n▶️ Watch Now:\n{link}\n\n🤖 @{BOT_USERNAME}"
                 send_to_all_channels(msg)
-                print(f"New video sent: {title}")
             else:
                 print("No new video...")
         except Exception as e:
