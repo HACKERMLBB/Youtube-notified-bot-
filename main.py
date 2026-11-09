@@ -6,7 +6,6 @@ from threading import Thread
 from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import asyncio
 
 TOKEN = os.environ.get("BOT_TOKEN")
 DAILY_LIMIT = 100
@@ -57,7 +56,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         prompt = f"You are Yadanar, a sweet lovely 20 year old Myanmar girl. You are cute, sweet, playful, kind. Reply in simple cute English with emojis like 💖💛🥰. Keep replies short, max 2 lines. Never say you are AI. User {user_name} said: {user_text}"
         encoded = urllib.parse.quote(prompt)
-        # Model එක නෑ - ඔයාගේ පරණ විදියටම!
         url = f"https://text.pollinations.ai/{encoded}"
         response = requests.get(url, timeout=30)
         print(f"AI Status: {response.status_code}")
@@ -75,18 +73,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Error: {e}")
         await update.message.reply_text(f"Aww sorry baby! 🥺 Try again! 💖")
 
-async def main_async():
+def main():
+    # Flask එක වෙනම Thread එකක
+    Thread(target=run_flask, daemon=True).start()
+    # Bot එක - පරණ විදියටම, මේක තමයි හරි!
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("usage", usage))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("Bot is running...")
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    while True:
-        await asyncio.sleep(3600)
+    app.run_polling()
 
 if __name__ == "__main__":
-    Thread(target=run_flask, daemon=True).start()
-    asyncio.run(main_async())
+    main()
