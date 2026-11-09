@@ -17,6 +17,17 @@ last_id = None
 def check_loop():
     global last_id
     print("Bot Started, checking YouTube...")
+
+    # ✅ Welcome Message එක!
+    try:
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={
+            "chat_id": CHANNEL,
+            "text": "✅ Bot Started! \nYouTube එකේ අලුත් Video එකක් ආව ගමන් මං මෙතනට දාන්නම්! 🔥"
+        })
+        print("Welcome message sent!")
+    except Exception as e:
+        print(f"Welcome Error: {e}")
+
     while True:
         try:
             url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YT_ID}"
@@ -24,14 +35,11 @@ def check_loop():
             root = ET.fromstring(r.content)
             entry = root.find('entry')
             if entry is None:
-                print("No video found yet")
                 time.sleep(600)
                 continue
-
             vid = entry.find('{http://www.youtube.com/xml/schemas/2015}videoId').text
             title = entry.find('title').text
             link = entry.find('link').attrib['href']
-
             if last_id is None:
                 last_id = vid
                 print(f"First video: {title}")
