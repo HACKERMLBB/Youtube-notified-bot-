@@ -1,5 +1,4 @@
 import os
-import re
 import random
 import requests
 import xml.etree.ElementTree as ET
@@ -14,14 +13,12 @@ CHANNEL_IDS_RAW = os.environ.get("CHANNEL_IDS", "") or os.environ.get("GROUP_ID"
 CHANNEL_IDS = [x.strip() for x in CHANNEL_IDS_RAW.split(",") if x.strip()]
 GROUP_ID = CHANNEL_IDS[0] if CHANNEL_IDS else ""
 
-# ✅ ඔයාගේ අලුත් Link එකම!
-CHANNEL_URL = "https://youtube.com/@pamela_cullen?si=-D8iNhxVIL0gM1DN"
-YOUTUBE_HANDLE = "pamela_cullen"
-FALLBACK_CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "UCR4MDIWLNe4p_J-RP0dnS5g")
+# ✅ ඔයාගේ ඇත්ත Channel ID URL එකම! Handle එක නෙමෙයි!
+CHANNEL_URL = "https://www.youtube.com/channel/UCR4MDIWLNe4p_J-RP0dnS5g"
+YOUTUBE_CHANNEL_ID = "UCR4MDIWLNe4p_J-RP0dnS5g"
 
 LAST_VIDEO_ID = {"id": None}
 USER_WARNINGS = {}
-RESOLVED_CHANNEL_ID = {"id": None}
 
 app = Flask(__name__)
 @app.route('/')
@@ -31,39 +28,19 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-def resolve_channel_id():
-    if RESOLVED_CHANNEL_ID["id"]:
-        return RESOLVED_CHANNEL_ID["id"]
-    try:
-        r = requests.get(f"https://www.youtube.com/@{YOUTUBE_HANDLE}", timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-        m = re.search(r'"channelId":"(UC[\w-]{22})"', r.text)
-        if not m:
-            m = re.search(r'/channel/(UC[\w-]{22})', r.text)
-        if m:
-            RESOLVED_CHANNEL_ID["id"] = m.group(1)
-            print(f"✅ Resolved Channel ID from Link: {m.group(1)}")
-            return m.group(1)
-    except Exception as e:
-        print(f"Resolve Error: {e}")
-    print(f"Using Fallback ID: {FALLBACK_CHANNEL_ID}")
-    RESOLVED_CHANNEL_ID["id"] = FALLBACK_CHANNEL_ID
-    return FALLBACK_CHANNEL_ID
-
-def get_channel_id():
-    return resolve_channel_id()
-
+# --- ✅ YouTube - ඔයාගේ ID එකෙන් විතරක්! Handle එකෙන් හොයන්නේ නැහැ! ---
 def get_latest_video():
     try:
-        cid = get_channel_id()
-        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
+        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
         r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-        print(f"RSS Status: {r.status_code} | Channel: {cid} | Link: {CHANNEL_URL}")
+        print(f"RSS Status: {r.status_code} | Channel ID: {YOUTUBE_CHANNEL_ID}")
         if r.status_code != 200:
             return None
         root = ET.fromstring(r.content)
         ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
         entry = root.find('atom:entry', ns)
         if entry is None:
+            print("No entry in RSS!")
             return None
         title = entry.find('atom:title', ns).text
         link = entry.find('atom:link', ns).attrib['href']
@@ -72,6 +49,7 @@ def get_latest_video():
         thumb_url = thumb.get('url') if thumb is not None else ""
         if thumb_url:
             thumb_url = thumb_url.replace("hqdefault", "maxresdefault")
+        print(f"Found YOUR Video: {title}")
         return {"title": title, "link": link, "id": vid_id, "thumb": thumb_url}
     except Exception as e:
         print(f"Error get_latest: {e}")
@@ -79,8 +57,7 @@ def get_latest_video():
 
 def get_videos_list(count=5):
     try:
-        cid = get_channel_id()
-        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
+        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
         r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         root = ET.fromstring(r.content)
         ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
@@ -166,9 +143,11 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
         return
     if LAST_VIDEO_ID["id"] is None:
         LAST_VIDEO_ID["id"] = video["id"]
+        print(f"First Check Saved: {video['title']}")
         return
     if video["id"] != LAST_VIDEO_ID["id"]:
         LAST_VIDEO_ID["id"] = video["id"]
+        print(f"NEW VIDEO! {video['title']}")
         txt = (
             "🌸✨・゜✧・゜✧・゜✧・゜✧🌸\n"
             "🔥 <b>NEW VIDEO IS OUT BABY! 🔥</b>\n"
