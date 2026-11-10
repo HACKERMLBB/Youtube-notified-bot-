@@ -1,6 +1,7 @@
 import os
 import random
 import requests
+import re
 import xml.etree.ElementTree as ET
 from datetime import time
 from threading import Thread
@@ -13,8 +14,10 @@ CHANNEL_IDS_RAW = os.environ.get("CHANNEL_IDS", "") or os.environ.get("GROUP_ID"
 CHANNEL_IDS = [x.strip() for x in CHANNEL_IDS_RAW.split(",") if x.strip()]
 GROUP_ID = CHANNEL_IDS[0] if CHANNEL_IDS else ""
 
+# ===== ✅ YOUR YOUTUBE CHANNEL ID - HARDCODED =====
 CHANNEL_URL = "https://www.youtube.com/channel/UCR4MDIWLNe4p_J-RP0dnS5g"
 YOUTUBE_CHANNEL_ID = "UCR4MDIWLNe4p_J-RP0dnS5g"
+YOUTUBE_CHANNEL_HANDLE = "UCR4MDIWLNe4p_J-RP0dnS5g"
 
 # ===== 🌐 YOUR WEBSITE LINK - PAMELA'S WORLD =====
 WEBSITE_URL = "https://pamelacullen.onrender.com/"
@@ -26,78 +29,163 @@ USER_WARNINGS = {}
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Pamela Bot is Alive! 1 Min Check + 5 Min Promo + Website Link + Thumbnail Fixed + Auto Pin ✅"
+    return "Pamela Bot is Alive! Channel UCR4MDIWLNe4p_J-RP0dnS5g + Thumbnail Fixed + Auto Pin ✅"
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-def get_thumb_url(vid_id, rss_thumb=""):
+def get_thumb_url(vid_id):
+    # maxres try karanawa, nathnam hqdefault
     if vid_id:
         return f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg"
-    if rss_thumb:
-        return rss_thumb
     return ""
 
+# ===== 🔥 NEW: 3 METHODS TO GET VIDEOS FOR YOUR CHANNEL ID =====
 def fetch_rss():
-    url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    for _ in range(2):
-        try:
-            r = requests.get(url, timeout=15, headers=headers)
-            if r.status_code == 200 and r.content:
-                return r.content
-        except Exception as e:
-            print(f"RSS fetch failed: {e}")
+    try:
+        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
+        r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+        if r.status_code == 200 and r.content and b"<entry" in r.content:
+            return r.content
+        print(f"RSS failed: {r.status_code}")
+    except Exception as e:
+        print(f"RSS fetch failed: {e}")
     return None
 
-def get_latest_video():
-    try:
-        content = fetch_rss()
-        if not content:
-            return None
-        root = ET.fromstring(content)
-        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
-        entry = root.find('atom:entry', ns)
-        if entry is None:
-            return None
-        title = entry.find('atom:title', ns).text
-        link = entry.find('atom:link', ns).attrib['href']
-        vid_id = entry.find('yt:videoId', ns).text
-        thumb_url = get_thumb_url(vid_id)
-        return {"title": title, "link": link, "id": vid_id, "thumb": thumb_url}
-    except Exception as e:
-        print(f"Error get_latest: {e}")
-        return None
+def fetch_via_invidious(count=5):
+    instances = [
+        "https://inv.nadeko.net",
+        "https://invidious.privacyredirect.com",
+        "https://yt.lemnoslife.com",
+        "https://inv.us.projectsegfau.lt",
+        "https://invidious.flokinet.to",
+    ]
+    for base in instances:
+        try:
+            url = f"{base}/api/v1/channels/{YOUTUBE_CHANNEL_ID}/videos"
+            r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code == 200:
+                data = r.json()
+                videos = []
+                for item in data[:count]:
+                    vid_id = item.get("videoId")
+                    if not vid_id:
+                        continue
+                    videos.append({
+                        "title": item.get("title", "Pamela Video"),
+                        "link": f"https://www.youtube.com/watch?v={vid_id}",
+                        "id": vid_id,
+                        "thumb": f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg"
+                    })
+                if videos:
+                    print(f"✅ Got {len(videos)} via Invidious: {base}")
+                    return videos
+        except Exception as e:
+            print(f"Invidious {base} failed: {e}")
+            continue
+    return []
 
-def get_videos_list(count=5):
+def fetch_via_scrape(count=5):
+    # Method 3: YouTube Channel Page eka scrape karanawa - RSS & Invidious fail unoth
     try:
-        content = fetch_rss()
-        if not content:
+        url = f"https://www.youtube.com/channel/{YOUTUBE_CHANNEL_ID}/videos"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
+        r = requests.get(url, timeout=20, headers=headers)
+        if r.status_code != 200:
             return []
-        root = ET.fromstring(content)
-        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
+        # videoId pattern eka hoyanawa
+        # "videoId":"XXXXXXXXXXX" pattern
+        video_ids = re.findall(r'"videoId":"([A-Za-z0-9_-]{11})"', r.text)
+        # title pattern
+        titles = re.findall(r'"title":{"simpleText":"([^"]+)"}', r.text)
+        # unique karanawa, order eka thiyanawa
+        seen = set()
+        uniq_ids = []
+        for vid in video_ids:
+            if vid not in seen:
+                seen.add(vid)
+                uniq_ids.append(vid)
+            if len(uniq_ids) >= count:
+                break
         videos = []
-        for entry in root.findall('atom:entry', ns)[:count]:
-            title = entry.find('atom:title', ns).text
-            link = entry.find('atom:link', ns).attrib['href']
-            vid_id = entry.find('yt:videoId', ns).text
-            thumb_url = get_thumb_url(vid_id)
-            videos.append({"title": title, "link": link, "id": vid_id, "thumb": thumb_url})
+        for i, vid_id in enumerate(uniq_ids[:count]):
+            title = titles[i] if i < len(titles) else "Pamela Video"
+            # HTML entities decode karanawa
+            title = title.replace("\\u0026", "&").replace("\\u0027", "'").replace("\\u0022", '"')
+            videos.append({
+                "title": title,
+                "link": f"https://www.youtube.com/watch?v={vid_id}",
+                "id": vid_id,
+                "thumb": f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg"
+            })
+        if videos:
+            print(f"✅ Got {len(videos)} via Scrape")
         return videos
     except Exception as e:
-        print(f"Error list: {e}")
+        print(f"Scrape failed: {e}")
         return []
 
-# ===== FIXED: Thumbnail fail unath Link eken penna widiyata =====
+def get_latest_video():
+    # 1. RSS
+    try:
+        content = fetch_rss()
+        if content:
+            root = ET.fromstring(content)
+            ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
+            entry = root.find('atom:entry', ns)
+            if entry is not None:
+                title = entry.find('atom:title', ns).text
+                link = entry.find('atom:link', ns).attrib['href']
+                vid_id = entry.find('yt:videoId', ns).text
+                return {"title": title, "link": link, "id": vid_id, "thumb": get_thumb_url(vid_id)}
+    except Exception as e:
+        print(f"RSS latest failed: {e}")
+    # 2. Invidious
+    vids = fetch_via_invidious(1)
+    if vids:
+        return vids[0]
+    # 3. Scrape
+    vids = fetch_via_scrape(1)
+    if vids:
+        return vids[0]
+    return None
+
+def get_videos_list(count=5):
+    # 1. RSS
+    try:
+        content = fetch_rss()
+        if content:
+            root = ET.fromstring(content)
+            ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
+            videos = []
+            for entry in root.findall('atom:entry', ns)[:count]:
+                title = entry.find('atom:title', ns).text
+                link = entry.find('atom:link', ns).attrib['href']
+                vid_id = entry.find('yt:videoId', ns).text
+                videos.append({"title": title, "link": link, "id": vid_id, "thumb": get_thumb_url(vid_id)})
+            if videos:
+                return videos
+    except Exception as e:
+        print(f"RSS list failed: {e}")
+    # 2. Invidious
+    vids = fetch_via_invidious(count)
+    if vids:
+        return vids
+    # 3. Scrape
+    return fetch_via_scrape(count)
+
+# ===== FIXED: Thumbnail + Link - 2ka ma enna =====
 async def send_video_photo(bot, chat_id, thumb, caption, reply_markup=None):
     if thumb:
         try:
             return await bot.send_photo(chat_id=chat_id, photo=thumb, caption=caption, parse_mode="HTML", reply_markup=reply_markup)
         except Exception as e:
-            print(f"Photo send failed, trying text fallback: {e}")
+            print(f"Photo failed, text fallback: {e}")
+    # Thumbnail fail unath Link eken preview enna
     return await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML", disable_web_page_preview=False, reply_markup=reply_markup)
 
 async def send_single_video_text(message_obj, video, reply_markup=None):
+    # Caption eke Title + Link + Thumbnail URL deka ma thiyanawa
     txt = f"🎬 <b>{video['title']}</b>\n\n👇 <b>Watch Now Baby! 👇</b>\n{video['link']}" + WEBSITE_TEXT
     try:
         if video.get("thumb"):
@@ -107,7 +195,6 @@ async def send_single_video_text(message_obj, video, reply_markup=None):
         print(f"Thumb failed, sending link only: {e}")
     await message_obj.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=reply_markup)
 
-# ===== FIXED: Videos List - Thumbnail nathiwath Link penna wa =====
 async def send_videos_with_thumbnails(message_obj, is_callback=False):
     vids = get_videos_list(5)
     if not vids:
@@ -234,7 +321,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt += "👇 Choose one baby! 👇" + WEBSITE_TEXT
         await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=main_keyboard())
 
-# ===== 🔥 NEW! AUTO PIN WHEN NEW VIDEO COMES =====
 async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
     if not CHANNEL_IDS:
         return
@@ -262,23 +348,18 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
         txt3 = "━━━━━━━━━━━━━━━━━━━\n💌 <i>Go watch it now baby! Like &amp; Comment!</i>\n💖 <i>I love you so much! You are my everything! 🥰❤️</i>" + WEBSITE_TEXT
         for CH in CHANNEL_IDS:
             try:
-                # 1. Parana Pin eka ain karanawa
                 try:
                     await context.bot.unpin_all_chat_messages(chat_id=int(CH))
                 except Exception as e:
-                    print(f"Unpin old failed (normal): {e}")
-                # 2. Header
+                    print(f"Unpin old failed: {e}")
                 await context.bot.send_message(chat_id=int(CH), text=txt1, parse_mode="HTML", disable_web_page_preview=True)
-                # 3. Video (Thumb fail unath Link eken)
                 msg = await send_video_photo(context.bot, int(CH), video["thumb"], caption2)
-                # 4. Footer
                 await context.bot.send_message(chat_id=int(CH), text=txt3, parse_mode="HTML", disable_web_page_preview=True)
-                # 5. PIN!
                 try:
                     await context.bot.pin_chat_message(chat_id=int(CH), message_id=msg.message_id, disable_notification=True)
                     print(f"✅ PINNED New Video in {CH}: {video['title']}")
                 except Exception as pin_e:
-                    print(f"❌ PIN FAILED in {CH}: {pin_e} - Bot is NOT Admin or No Pin Permission!")
+                    print(f"❌ PIN FAILED in {CH}: {pin_e}")
             except Exception as e:
                 print(f"Send Error to {CH}: {e}")
 
@@ -609,7 +690,7 @@ def main():
         jq.run_repeating(promo_message, interval=300, first=30)
         jq.run_daily(good_morning, time=time(hour=6, minute=0))
         jq.run_daily(good_night, time=time(hour=22, minute=0))
-    print("Pamela Bot Started... Website Link + Thumbnail Fixed + Auto Pin ✅")
+    print("Pamela Bot Started... Channel UCR4MDIWLNe4p_J-RP0dnS5g + Thumbnail Fixed + Auto Pin ✅")
     app_builder.run_polling()
 
 if __name__ == "__main__":
