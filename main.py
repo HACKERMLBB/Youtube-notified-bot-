@@ -26,7 +26,7 @@ USER_WARNINGS = {}
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Pamela Bot is Alive! 1 Min Check + 5 Min Promo + Website Link + Thumbnail Fixed ✅"
+    return "Pamela Bot is Alive! 1 Min Check + 5 Min Promo + Website Link + Thumbnail Fixed + Auto Pin ✅"
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
@@ -38,13 +38,24 @@ def get_thumb_url(vid_id, rss_thumb=""):
         return rss_thumb
     return ""
 
+def fetch_rss():
+    url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    for _ in range(2):
+        try:
+            r = requests.get(url, timeout=15, headers=headers)
+            if r.status_code == 200 and r.content:
+                return r.content
+        except Exception as e:
+            print(f"RSS fetch failed: {e}")
+    return None
+
 def get_latest_video():
     try:
-        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
-        r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-        if r.status_code != 200:
+        content = fetch_rss()
+        if not content:
             return None
-        root = ET.fromstring(r.content)
+        root = ET.fromstring(content)
         ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
         entry = root.find('atom:entry', ns)
         if entry is None:
@@ -60,9 +71,10 @@ def get_latest_video():
 
 def get_videos_list(count=5):
     try:
-        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
-        r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-        root = ET.fromstring(r.content)
+        content = fetch_rss()
+        if not content:
+            return []
+        root = ET.fromstring(content)
         ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
         videos = []
         for entry in root.findall('atom:entry', ns)[:count]:
@@ -76,28 +88,43 @@ def get_videos_list(count=5):
         print(f"Error list: {e}")
         return []
 
+# ===== FIXED: Thumbnail fail unath Link eken penna widiyata =====
 async def send_video_photo(bot, chat_id, thumb, caption, reply_markup=None):
-    try:
-        if thumb:
+    if thumb:
+        try:
             return await bot.send_photo(chat_id=chat_id, photo=thumb, caption=caption, parse_mode="HTML", reply_markup=reply_markup)
-    except Exception as e:
-        print(f"Photo send failed, trying text fallback: {e}")
+        except Exception as e:
+            print(f"Photo send failed, trying text fallback: {e}")
     return await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML", disable_web_page_preview=False, reply_markup=reply_markup)
 
-# ===== NEW! Videos List with Thumbnails =====
+async def send_single_video_text(message_obj, video, reply_markup=None):
+    txt = f"🎬 <b>{video['title']}</b>\n\n👇 <b>Watch Now Baby! 👇</b>\n{video['link']}" + WEBSITE_TEXT
+    try:
+        if video.get("thumb"):
+            await message_obj.reply_photo(photo=video["thumb"], caption=txt, parse_mode="HTML", reply_markup=reply_markup)
+            return
+    except Exception as e:
+        print(f"Thumb failed, sending link only: {e}")
+    await message_obj.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=reply_markup)
+
+# ===== FIXED: Videos List - Thumbnail nathiwath Link penna wa =====
 async def send_videos_with_thumbnails(message_obj, is_callback=False):
     vids = get_videos_list(5)
     if not vids:
-        txt = "😢 No videos found!" + WEBSITE_TEXT
-        if is_callback:
-            await message_obj.reply_text(txt)
-        else:
-            await message_obj.reply_text(txt)
+        latest_one = get_latest_video()
+        if latest_one:
+            vids = [latest_one]
+    if not vids:
+        txt = (
+            "😢 <b>Videos loading Baby... Try again!</b> 🥺\n\n"
+            f"🎬 <b>Watch All My Videos Here Baby! 👇</b>\n{CHANNEL_URL}\n\n"
+            f"🔗 <b>Channel:</b> {CHANNEL_URL}"
+            + WEBSITE_TEXT
+        )
+        await message_obj.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False)
         return
-    # Header text first
     header = "🎬 <b>Latest 5 Videos:</b> 🎬" + WEBSITE_TEXT
     await message_obj.reply_text(header, parse_mode="HTML", disable_web_page_preview=True)
-    # Then send each video as PHOTO with thumbnail!
     for i, v in enumerate(vids, 1):
         caption = f"🎬 <b>{i}. {v['title']}</b>\n\n👇 <b>Watch Now Baby! 👇</b>\n{v['link']}" + WEBSITE_TEXT
         try:
@@ -138,13 +165,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(txt1, parse_mode="HTML", disable_web_page_preview=True)
     if video:
-        caption = f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {video['title']}\n\n👇 <b>Watch Now Baby! 👇</b>\n{video['link']}" + WEBSITE_TEXT
-        try:
-            await update.message.reply_photo(photo=video["thumb"], caption=caption, parse_mode="HTML")
-        except:
-            await update.message.reply_text(caption, parse_mode="HTML", disable_web_page_preview=False)
+        await send_single_video_text(update.message, video)
     else:
-        await update.message.reply_text("🎬 <b>Latest Video:</b>\n😢 Could not find video!" + WEBSITE_TEXT, parse_mode="HTML")
+        await update.message.reply_text(f"🎬 <b>Latest Video:</b>\n👇 <b>Watch My Videos Here Baby! 👇</b>\n{CHANNEL_URL}" + WEBSITE_TEXT, parse_mode="HTML", disable_web_page_preview=False)
     txt3 = (
         "━━━━━━━━━━━━━━━━━━━\n"
         "💌 <i>\"You made my day by coming here! I love you so much!\" 💖</i>\n\n"
@@ -166,7 +189,7 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
     else:
-        await update.message.reply_text("😢 Sorry, I could not find the latest video!" + WEBSITE_TEXT)
+        await update.message.reply_text(f"😢 Sorry, Video loading Baby! 🥺\n\n🎬 <b>Watch Here:</b>\n{CHANNEL_URL}" + WEBSITE_TEXT, parse_mode="HTML", disable_web_page_preview=False)
 
 async def videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_videos_with_thumbnails(update.message)
@@ -189,7 +212,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
         else:
-            await query.message.reply_text("😢 No video found!" + WEBSITE_TEXT)
+            await query.message.reply_text(f"😢 No video found! Try again Baby!\n\n🎬 <b>Watch Here:</b>\n{CHANNEL_URL}" + WEBSITE_TEXT, parse_mode="HTML", disable_web_page_preview=False)
     elif data == "videos":
         await send_videos_with_thumbnails(query.message, is_callback=True)
         await query.message.reply_text("👆 <b>Above are the Latest 5 Videos Baby!</b> 🥰" + WEBSITE_TEXT, parse_mode="HTML", reply_markup=back_keyboard())
@@ -206,9 +229,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt = "🌸 <b>Pamela Menu</b> 🌸\n\n"
         if video:
             txt += f"🎬 <b>Latest:</b> {video['title']}\n{video['link']}\n\n"
+        else:
+            txt += f"🎬 <b>Channel:</b> {CHANNEL_URL}\n\n"
         txt += "👇 Choose one baby! 👇" + WEBSITE_TEXT
         await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=main_keyboard())
 
+# ===== 🔥 NEW! AUTO PIN WHEN NEW VIDEO COMES =====
 async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
     if not CHANNEL_IDS:
         return
@@ -236,13 +262,23 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
         txt3 = "━━━━━━━━━━━━━━━━━━━\n💌 <i>Go watch it now baby! Like &amp; Comment!</i>\n💖 <i>I love you so much! You are my everything! 🥰❤️</i>" + WEBSITE_TEXT
         for CH in CHANNEL_IDS:
             try:
+                # 1. Parana Pin eka ain karanawa
+                try:
+                    await context.bot.unpin_all_chat_messages(chat_id=int(CH))
+                except Exception as e:
+                    print(f"Unpin old failed (normal): {e}")
+                # 2. Header
                 await context.bot.send_message(chat_id=int(CH), text=txt1, parse_mode="HTML", disable_web_page_preview=True)
+                # 3. Video (Thumb fail unath Link eken)
                 msg = await send_video_photo(context.bot, int(CH), video["thumb"], caption2)
+                # 4. Footer
                 await context.bot.send_message(chat_id=int(CH), text=txt3, parse_mode="HTML", disable_web_page_preview=True)
+                # 5. PIN!
                 try:
                     await context.bot.pin_chat_message(chat_id=int(CH), message_id=msg.message_id, disable_notification=True)
-                except Exception as e:
-                    print(f"Pin Error: {e}")
+                    print(f"✅ PINNED New Video in {CH}: {video['title']}")
+                except Exception as pin_e:
+                    print(f"❌ PIN FAILED in {CH}: {pin_e} - Bot is NOT Admin or No Pin Permission!")
             except Exception as e:
                 print(f"Send Error to {CH}: {e}")
 
@@ -474,7 +510,7 @@ async def welcome_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await update.message.reply_photo(photo=video["thumb"], caption=f"🎬 <b>{video['title']}</b>\n{video['link']}" + WEBSITE_TEXT, parse_mode="HTML")
             except:
-                pass
+                await update.message.reply_text(f"🎬 <b>{video['title']}</b>\n{video['link']}" + WEBSITE_TEXT, parse_mode="HTML", disable_web_page_preview=False)
 
 async def good_morning(context: ContextTypes.DEFAULT_TYPE):
     if not CHANNEL_IDS:
@@ -573,7 +609,7 @@ def main():
         jq.run_repeating(promo_message, interval=300, first=30)
         jq.run_daily(good_morning, time=time(hour=6, minute=0))
         jq.run_daily(good_night, time=time(hour=22, minute=0))
-    print("Pamela Bot Started... Website Link + Thumbnail Fixed ✅")
+    print("Pamela Bot Started... Website Link + Thumbnail Fixed + Auto Pin ✅")
     app_builder.run_polling()
 
 if __name__ == "__main__":
