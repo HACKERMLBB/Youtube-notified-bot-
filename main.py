@@ -1,8 +1,9 @@
 import os
 import random
-import html
-import asyncio
 import requests
+import re
+import html
+import time as time_module
 import xml.etree.ElementTree as ET
 from datetime import time
 from threading import Thread
@@ -15,8 +16,10 @@ CHANNEL_IDS_RAW = os.environ.get("CHANNEL_IDS", "") or os.environ.get("GROUP_ID"
 CHANNEL_IDS = [x.strip() for x in CHANNEL_IDS_RAW.split(",") if x.strip()]
 GROUP_ID = CHANNEL_IDS[0] if CHANNEL_IDS else ""
 
+# ===== ✅ YOUR YOUTUBE CHANNEL ID - HARDCODED =====
 CHANNEL_URL = "https://www.youtube.com/channel/UCR4MDIWLNe4p_J-RP0dnS5g"
 YOUTUBE_CHANNEL_ID = "UCR4MDIWLNe4p_J-RP0dnS5g"
+YOUTUBE_CHANNEL_HANDLE = "UCR4MDIWLNe4p_J-RP0dnS5g"
 
 # ===== 🌐 YOUR WEBSITE LINK - PAMELA'S WORLD =====
 WEBSITE_URL = "https://pamelacullen.onrender.com/"
@@ -24,10 +27,17 @@ WEBSITE_TEXT = f"\n\n🌐 <b>Join Our Website:</b>\n👇 <b>Click Here Baby! �
 
 LAST_VIDEO_ID = {"id": None}
 USER_WARNINGS = {}
-VIDEO_CACHE = {"videos": [], "time": 0}
 
+# ===== ⚡ SPEED FIX: Cache - 5 min videos mathaka thiyanawa =====
+VIDEO_CACHE = {"videos": [], "time": 0, "latest": None, "latest_time": 0}
+CACHE_SECONDS = 300
+
+def is_cache_valid(last_time):
+    return (time_module.time() - last_time) < CACHE_SECONDS
+
+# ===== FIX: Title eke < > & thibboth Telegram Reject karanawa - eka fix karanawa =====
 def clean_title(raw):
-    raw = (raw or "New Video").strip()
+    raw = (raw or "Pamela Video").strip()
     if len(raw) > 80:
         raw = raw[:77] + "..."
     return html.escape(raw)
@@ -35,104 +45,220 @@ def clean_title(raw):
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Pamela Bot is Alive! 1 Min Check + 5 Min Promo + Website Link + Thumbnail Fixed ✅"
+    return "Pamela Bot is Alive! Channel UCR4MDIWLNe4p_J-RP0dnS5g + 10 Videos + Thumbnail Fixed + Auto Pin ✅"
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-def get_thumb_url(vid_id, rss_thumb=""):
+def get_thumb_url(vid_id):
     if vid_id:
         return f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg"
-    if rss_thumb:
-        return rss_thumb
     return ""
 
-def get_latest_video():
+def get_thumb_list(vid_id):
+    # FIX: hqdefault witharak - maxres nathi nisa 4 parak try karanna one na, 1 parin enawa!
+    if not vid_id:
+        return []
+    return [
+        f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg",
+    ]
+
+def fetch_rss():
     try:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
-        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-        if r.status_code != 200:
-            return None
-        root = ET.fromstring(r.content)
-        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
-        entry = root.find('atom:entry', ns)
-        if entry is None:
-            return None
-        title = entry.find('atom:title', ns).text
-        link = entry.find('atom:link', ns).attrib['href']
-        vid_id = entry.find('yt:videoId', ns).text
-        thumb_url = get_thumb_url(vid_id)
-        return {"title": title, "link": link, "id": vid_id, "thumb": thumb_url}
+        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+        if r.status_code == 200 and r.content and b"<entry" in r.content:
+            return r.content
+        print(f"RSS failed: {r.status_code}")
     except Exception as e:
-        print(f"Error get_latest: {e}")
-        return None
+        print(f"RSS fetch failed: {e}")
+    return None
 
-def get_videos_list(count=5):
-    if VIDEO_CACHE["videos"]:
-        return VIDEO_CACHE["videos"][:count]
-    for attempt in range(2):
+def fetch_via_invidious(count=10):
+    # FIX: Marila thibba instances 2 maru kara - me 2 wada karanawa
+    instances = [
+        "https://yewtu.be",
+        "https://inv.us.projectsegfau.lt",
+    ]
+    for base in instances:
         try:
-            url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
-            r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            if r.status_code != 200 or b"<entry" not in r.content:
-                continue
-            root = ET.fromstring(r.content)
-            ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
-            videos = []
+            url = f"{base}/api/v1/channels/{YOUTUBE_CHANNEL_ID}/videos"
+            r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code == 200:
+                data = r.json()
+                videos = []
+                for item in data[:count]:
+                    vid_id = item.get("videoId")
+                    if not vid_id:
+                        continue
+                    videos.append({
+                        "title": item.get("title", "Pamela Video"),
+                        "link": f"https://www.youtube.com/watch?v={vid_id}",
+                        "id": vid_id,
+                        "thumb": f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg"
+                    })
+                if videos:
+                    print(f"✅ Got {len(videos)} via Invidious: {base}")
+                    return videos
+        except Exception as e:
+            print(f"Invidious {base} failed: {e}")
+            continue
+    return []
+
+def fetch_via_scrape(count=10):
+    try:
+        url = f"https://www.youtube.com/channel/{YOUTUBE_CHANNEL_ID}/videos"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
+        r = requests.get(url, timeout=15, headers=headers)
+        if r.status_code != 200:
+            return []
+        video_ids = re.findall(r'"videoId":"([A-Za-z0-9_-]{11})"', r.text)
+        titles = re.findall(r'"title":{"simpleText":"([^"]+)"}', r.text)
+        seen = set()
+        uniq_ids = []
+        for vid in video_ids:
+            if vid not in seen:
+                seen.add(vid)
+                uniq_ids.append(vid)
+            if len(uniq_ids) >= count:
+                break
+        videos = []
+        for i, vid_id in enumerate(uniq_ids[:count]):
+            title = titles[i] if i < len(titles) else "Pamela Video"
+            title = title.replace("\\u0026", "&").replace("\\u0027", "'").replace("\\u0022", '"')
+            videos.append({
+                "title": title,
+                "link": f"https://www.youtube.com/watch?v={vid_id}",
+                "id": vid_id,
+                "thumb": f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg"
+            })
+        if videos:
+            print(f"✅ Got {len(videos)} via Scrape")
+        return videos
+    except Exception as e:
+        print(f"Scrape failed: {e}")
+        return []
+
+def get_latest_video():
+    if VIDEO_CACHE["latest"] and is_cache_valid(VIDEO_CACHE["latest_time"]):
+        return VIDEO_CACHE["latest"]
+    try:
+        content = fetch_rss()
+        if content:
+            root = ET.fromstring(content)
+            ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
+            entry = root.find('atom:entry', ns)
+            if entry is not None:
+                title = entry.find('atom:title', ns).text
+                link = entry.find('atom:link', ns).attrib['href']
+                vid_id = entry.find('yt:videoId', ns).text
+                result = {"title": title, "link": link, "id": vid_id, "thumb": get_thumb_url(vid_id)}
+                VIDEO_CACHE["latest"] = result
+                VIDEO_CACHE["latest_time"] = time_module.time()
+                return result
+    except Exception as e:
+        print(f"RSS latest failed: {e}")
+    vids = fetch_via_invidious(1)
+    if vids:
+        VIDEO_CACHE["latest"] = vids[0]
+        VIDEO_CACHE["latest_time"] = time_module.time()
+        return vids[0]
+    vids = fetch_via_scrape(1)
+    if vids:
+        VIDEO_CACHE["latest"] = vids[0]
+        VIDEO_CACHE["latest_time"] = time_module.time()
+        return vids[0]
+    return None
+
+def get_videos_list(count=10):
+    if VIDEO_CACHE["videos"] and is_cache_valid(VIDEO_CACHE["time"]) and len(VIDEO_CACHE["videos"]) >= count:
+        print(f"⚡ Using Cached Videos: {len(VIDEO_CACHE['videos'])}")
+        return VIDEO_CACHE["videos"][:count]
+    videos = []
+    try:
+        content = fetch_rss()
+        if content:
+            root = ET.fromstring(content)
+            ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
             for entry in root.findall('atom:entry', ns)[:count]:
                 title = entry.find('atom:title', ns).text
                 link = entry.find('atom:link', ns).attrib['href']
                 vid_id = entry.find('yt:videoId', ns).text
-                thumb_url = get_thumb_url(vid_id)
-                videos.append({"title": title, "link": link, "id": vid_id, "thumb": thumb_url})
+                videos.append({"title": title, "link": link, "id": vid_id, "thumb": get_thumb_url(vid_id)})
             if videos:
                 VIDEO_CACHE["videos"] = videos
+                VIDEO_CACHE["time"] = time_module.time()
                 return videos
-        except Exception as e:
-            print(f"Error list try {attempt}: {e}")
-            continue
-    try:
-        url = f"https://yewtu.be/api/v1/channels/{YOUTUBE_CHANNEL_ID}/videos"
-        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        data = r.json()
-        videos = []
-        for item in data[:count]:
-            vid_id = item.get("videoId", "")
-            videos.append({"title": item.get("title", "New Video"), "link": f"https://www.youtube.com/watch?v={vid_id}", "id": vid_id, "thumb": get_thumb_url(vid_id)})
-        if videos:
-            VIDEO_CACHE["videos"] = videos
-            return videos
     except Exception as e:
-        print(f"Invidious backup failed: {e}")
+        print(f"RSS list failed: {e}")
+    vids = fetch_via_invidious(count)
+    if vids:
+        VIDEO_CACHE["videos"] = vids
+        VIDEO_CACHE["time"] = time_module.time()
+        return vids
+    vids = fetch_via_scrape(count)
+    if vids:
+        VIDEO_CACHE["videos"] = vids
+        VIDEO_CACHE["time"] = time_module.time()
+        return vids
     return []
 
-async def send_video_photo(bot, chat_id, thumb, caption, reply_markup=None):
-    try:
-        if thumb:
-            return await bot.send_photo(chat_id=chat_id, photo=thumb, caption=caption, parse_mode="HTML", reply_markup=reply_markup)
-    except Exception as e:
-        print(f"Photo send failed, trying text fallback: {e}")
+# ===== 🔥 FIXED: All Videos Thumbnail Preview 100% =====
+async def send_video_photo(bot, chat_id, thumb, caption, reply_markup=None, vid_id=None):
+    thumbs_to_try = []
+    if vid_id:
+        thumbs_to_try = get_thumb_list(vid_id)
+    elif thumb:
+        thumbs_to_try = [thumb]
+    for t in thumbs_to_try:
+        try:
+            return await bot.send_photo(chat_id=chat_id, photo=t, caption=caption, parse_mode="HTML", reply_markup=reply_markup)
+        except Exception as e:
+            print(f"Thumb {t} failed, trying next: {e}")
+            continue
     return await bot.send_message(chat_id=chat_id, text=caption, parse_mode="HTML", disable_web_page_preview=False, reply_markup=reply_markup)
 
-# ===== NEW! Videos List with Thumbnails =====
-async def send_videos_with_thumbnails(message_obj, is_callback=False):
-    vids = get_videos_list(5)
-    if not vids:
-        txt = "😢 No videos found! Please try again in 1 min Baby! 🥺" + WEBSITE_TEXT
-        await message_obj.reply_text(txt, parse_mode="HTML", disable_web_page_preview=True)
-        return
-    header = "🎬 <b>Latest 5 Videos:</b> 🎬" + WEBSITE_TEXT
-    await message_obj.reply_text(header, parse_mode="HTML", disable_web_page_preview=True)
-    async def send_one(i, v):
-        title = clean_title(v['title'])
-        caption = f"🎬 <b>{i}. {title}</b>\n\n👇 <b>Watch Now Baby! 👇</b>\n{v['link']}" + WEBSITE_TEXT
+async def send_single_video_text(message_obj, video, reply_markup=None):
+    txt = f"🎬 <b>{clean_title(video['title'])}</b>\n\n👇 <b>Watch Now Baby! 👇</b>\n{video['link']}" + WEBSITE_TEXT
+    for thumb_url in get_thumb_list(video.get("id")):
         try:
-            await message_obj.reply_photo(photo=v["thumb"], caption=caption, parse_mode="HTML")
+            await message_obj.reply_photo(photo=thumb_url, caption=txt, parse_mode="HTML", reply_markup=reply_markup)
+            return
         except Exception as e:
-            print(f"Video {i} photo failed: {e}")
+            print(f"Thumb {thumb_url} failed: {e}")
+            continue
+    await message_obj.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=reply_markup)
+
+async def send_videos_with_thumbnails(message_obj, is_callback=False):
+    vids = get_videos_list(10)
+    if not vids:
+        latest_one = get_latest_video()
+        if latest_one:
+            vids = [latest_one]
+    if not vids:
+        txt = (
+            "😢 <b>Videos loading Baby... Try again!</b> 🥺\n\n"
+            f"🎬 <b>Watch All My Videos Here Baby! 👇</b>\n{CHANNEL_URL}\n\n"
+            f"🔗 <b>Channel:</b> {CHANNEL_URL}"
+            + WEBSITE_TEXT
+        )
+        await message_obj.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False)
+        return
+    header = "🎬 <b>Latest 10 Videos:</b> 🎬" + WEBSITE_TEXT
+    await message_obj.reply_text(header, parse_mode="HTML", disable_web_page_preview=True)
+    for i, v in enumerate(vids, 1):
+        caption = f"🎬 <b>{i}. {clean_title(v['title'])}</b>\n\n👇 <b>Watch Now Baby! 👇</b>\n{v['link']}" + WEBSITE_TEXT
+        sent = False
+        for thumb_url in get_thumb_list(v.get("id")):
+            try:
+                await message_obj.reply_photo(photo=thumb_url, caption=caption, parse_mode="HTML")
+                sent = True
+                break
+            except Exception as e:
+                print(f"Video {i} thumb {thumb_url} failed: {e}")
+                continue
+        if not sent:
             await message_obj.reply_text(caption, parse_mode="HTML", disable_web_page_preview=False)
-    tasks = [send_one(i, v) for i, v in enumerate(vids, 1)]
-    await asyncio.gather(*tasks)
 
 def main_keyboard():
     keyboard = [
@@ -166,13 +292,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(txt1, parse_mode="HTML", disable_web_page_preview=True)
     if video:
-        caption = f"🎬 <b>My Latest Video Just Dropped! 🔥</b>\n📌 {clean_title(video['title'])}\n\n👇 <b>Watch Now Baby! 👇</b>\n{video['link']}" + WEBSITE_TEXT
-        try:
-            await update.message.reply_photo(photo=video["thumb"], caption=caption, parse_mode="HTML")
-        except:
-            await update.message.reply_text(caption, parse_mode="HTML", disable_web_page_preview=False)
+        await send_single_video_text(update.message, video)
     else:
-        await update.message.reply_text("🎬 <b>Latest Video:</b>\n😢 Could not find video!" + WEBSITE_TEXT, parse_mode="HTML")
+        await update.message.reply_text(f"🎬 <b>Latest Video:</b>\n👇 <b>Watch My Videos Here Baby! 👇</b>\n{CHANNEL_URL}" + WEBSITE_TEXT, parse_mode="HTML", disable_web_page_preview=False)
     txt3 = (
         "━━━━━━━━━━━━━━━━━━━\n"
         "💌 <i>\"You made my day by coming here! I love you so much!\" 💖</i>\n\n"
@@ -194,7 +316,7 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         await update.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
     else:
-        await update.message.reply_text("😢 Sorry, I could not find the latest video!" + WEBSITE_TEXT)
+        await update.message.reply_text(f"😢 Sorry, Video loading Baby! 🥺\n\n🎬 <b>Watch Here:</b>\n{CHANNEL_URL}" + WEBSITE_TEXT, parse_mode="HTML", disable_web_page_preview=False)
 
 async def videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_videos_with_thumbnails(update.message)
@@ -217,10 +339,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=back_keyboard())
         else:
-            await query.message.reply_text("😢 No video found!" + WEBSITE_TEXT)
+            await query.message.reply_text(f"😢 No video found! Try again Baby!\n\n🎬 <b>Watch Here:</b>\n{CHANNEL_URL}" + WEBSITE_TEXT, parse_mode="HTML", disable_web_page_preview=False)
     elif data == "videos":
         await send_videos_with_thumbnails(query.message, is_callback=True)
-        await query.message.reply_text("👆 <b>Above are the Latest 5 Videos Baby!</b> 🥰" + WEBSITE_TEXT, parse_mode="HTML", reply_markup=back_keyboard())
+        await query.message.reply_text("👆 <b>Above are the Latest 10 Videos Baby!</b> 🥰" + WEBSITE_TEXT, parse_mode="HTML", reply_markup=back_keyboard())
     elif data == "game":
         txt = "🎮 <b>Pamela Game Zone!</b>\n\nChoose a game:\n\n🎲 /dice - Roll a dice\n✂️ /rps rock / paper / scissors\n🔢 /guess - Guess my number (1-10)\n❤️ /love YourName CrushName - Love Calculator\n💬 /quote - Cute Quote" + WEBSITE_TEXT
         await query.message.reply_text(txt, parse_mode="HTML", reply_markup=back_keyboard())
@@ -234,6 +356,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt = "🌸 <b>Pamela Menu</b> 🌸\n\n"
         if video:
             txt += f"🎬 <b>Latest:</b> {clean_title(video['title'])}\n{video['link']}\n\n"
+        else:
+            txt += f"🎬 <b>Channel:</b> {CHANNEL_URL}\n\n"
         txt += "👇 Choose one baby! 👇" + WEBSITE_TEXT
         await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False, reply_markup=main_keyboard())
 
@@ -264,13 +388,18 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
         txt3 = "━━━━━━━━━━━━━━━━━━━\n💌 <i>Go watch it now baby! Like &amp; Comment!</i>\n💖 <i>I love you so much! You are my everything! 🥰❤️</i>" + WEBSITE_TEXT
         for CH in CHANNEL_IDS:
             try:
+                try:
+                    await context.bot.unpin_all_chat_messages(chat_id=int(CH))
+                except Exception as e:
+                    print(f"Unpin old failed: {e}")
                 await context.bot.send_message(chat_id=int(CH), text=txt1, parse_mode="HTML", disable_web_page_preview=True)
-                msg = await send_video_photo(context.bot, int(CH), video["thumb"], caption2)
+                msg = await send_video_photo(context.bot, int(CH), video["thumb"], caption2, vid_id=video["id"])
                 await context.bot.send_message(chat_id=int(CH), text=txt3, parse_mode="HTML", disable_web_page_preview=True)
                 try:
                     await context.bot.pin_chat_message(chat_id=int(CH), message_id=msg.message_id, disable_notification=True)
-                except Exception as e:
-                    print(f"Pin Error: {e}")
+                    print(f"✅ PINNED New Video in {CH}: {video['title']}")
+                except Exception as pin_e:
+                    print(f"❌ PIN FAILED in {CH}: {pin_e}")
             except Exception as e:
                 print(f"Send Error to {CH}: {e}")
 
@@ -322,7 +451,7 @@ async def promo_message(context: ContextTypes.DEFAULT_TYPE):
     txt = random.choice(promos)
     for CH in CHANNEL_IDS:
         try:
-            await send_video_photo(context.bot, int(CH), video["thumb"], txt)
+            await send_video_photo(context.bot, int(CH), video["thumb"], txt, vid_id=video["id"])
         except Exception as e:
             print(f"Promo Error to {CH}: {e}")
 
@@ -489,6 +618,7 @@ async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt = "📜 <b>Group Rules - Pamela's House:</b>\n\n1. Be Kind &amp; Respectful 💖\n2. No Spam / No Links Without Permission 🚫\n3. No Bad Words / No Fighting 🙏\n4. Love Pamela &amp; Subscribe! ❤️🎮\n5. Have Fun!\n\nAdmins can /ban /mute /warn bad users!" + WEBSITE_TEXT
     await update.message.reply_text(txt, parse_mode="HTML")
 
+# ===== ✅ WELCOME MESSAGE - KALIN THIBBA EKHEMMAMA - WENAS KARE NAHA! =====
 async def welcome_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for user in update.message.new_chat_members:
         video = get_latest_video()
@@ -502,7 +632,7 @@ async def welcome_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await update.message.reply_photo(photo=video["thumb"], caption=f"🎬 <b>{clean_title(video['title'])}</b>\n{video['link']}" + WEBSITE_TEXT, parse_mode="HTML")
             except:
-                pass
+                await update.message.reply_text(f"🎬 <b>{clean_title(video['title'])}</b>\n{video['link']}" + WEBSITE_TEXT, parse_mode="HTML", disable_web_page_preview=False)
 
 async def good_morning(context: ContextTypes.DEFAULT_TYPE):
     if not CHANNEL_IDS:
@@ -601,7 +731,7 @@ def main():
         jq.run_repeating(promo_message, interval=300, first=30)
         jq.run_daily(good_morning, time=time(hour=6, minute=0))
         jq.run_daily(good_night, time=time(hour=22, minute=0))
-    print("Pamela Bot Started... Website Link + Thumbnail Fixed ✅")
+    print("Pamela Bot Started... Channel UCR4MDIWLNe4p_J-RP0dnS5g + 10 Videos + Thumbnail Fixed + Auto Pin ✅")
     app_builder.run_polling()
 
 if __name__ == "__main__":
