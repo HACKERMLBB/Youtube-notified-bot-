@@ -24,8 +24,6 @@ WEBSITE_TEXT = f"\n\n🌐 <b>Join Our Website:</b>\n👇 <b>Click Here Baby! �
 
 LAST_VIDEO_ID = {"id": None}
 USER_WARNINGS = {}
-
-# ===== FIX 1: Cache for Speed =====
 VIDEO_CACHE = {"videos": [], "time": 0}
 
 def clean_title(raw):
@@ -52,7 +50,7 @@ def get_thumb_url(vid_id, rss_thumb=""):
 def get_latest_video():
     try:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
-        r = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
         if r.status_code != 200:
             return None
         root = ET.fromstring(r.content)
@@ -70,27 +68,43 @@ def get_latest_video():
         return None
 
 def get_videos_list(count=5):
-    # ===== FIX 1: Cache eke thiyenawa nam YouTube ekata yanne na - Fast! =====
     if VIDEO_CACHE["videos"]:
         return VIDEO_CACHE["videos"][:count]
+    for attempt in range(2):
+        try:
+            url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
+            r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            if r.status_code != 200 or b"<entry" not in r.content:
+                continue
+            root = ET.fromstring(r.content)
+            ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
+            videos = []
+            for entry in root.findall('atom:entry', ns)[:count]:
+                title = entry.find('atom:title', ns).text
+                link = entry.find('atom:link', ns).attrib['href']
+                vid_id = entry.find('yt:videoId', ns).text
+                thumb_url = get_thumb_url(vid_id)
+                videos.append({"title": title, "link": link, "id": vid_id, "thumb": thumb_url})
+            if videos:
+                VIDEO_CACHE["videos"] = videos
+                return videos
+        except Exception as e:
+            print(f"Error list try {attempt}: {e}")
+            continue
     try:
-        url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
-        r = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
-        root = ET.fromstring(r.content)
-        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
+        url = f"https://yewtu.be/api/v1/channels/{YOUTUBE_CHANNEL_ID}/videos"
+        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        data = r.json()
         videos = []
-        for entry in root.findall('atom:entry', ns)[:count]:
-            title = entry.find('atom:title', ns).text
-            link = entry.find('atom:link', ns).attrib['href']
-            vid_id = entry.find('yt:videoId', ns).text
-            thumb_url = get_thumb_url(vid_id)
-            videos.append({"title": title, "link": link, "id": vid_id, "thumb": thumb_url})
+        for item in data[:count]:
+            vid_id = item.get("videoId", "")
+            videos.append({"title": item.get("title", "New Video"), "link": f"https://www.youtube.com/watch?v={vid_id}", "id": vid_id, "thumb": get_thumb_url(vid_id)})
         if videos:
             VIDEO_CACHE["videos"] = videos
-        return videos
+            return videos
     except Exception as e:
-        print(f"Error list: {e}")
-        return []
+        print(f"Invidious backup failed: {e}")
+    return []
 
 async def send_video_photo(bot, chat_id, thumb, caption, reply_markup=None):
     try:
@@ -104,16 +118,11 @@ async def send_video_photo(bot, chat_id, thumb, caption, reply_markup=None):
 async def send_videos_with_thumbnails(message_obj, is_callback=False):
     vids = get_videos_list(5)
     if not vids:
-        txt = "😢 No videos found!" + WEBSITE_TEXT
-        if is_callback:
-            await message_obj.reply_text(txt)
-        else:
-            await message_obj.reply_text(txt)
+        txt = "😢 No videos found! Please try again in 1 min Baby! 🥺" + WEBSITE_TEXT
+        await message_obj.reply_text(txt, parse_mode="HTML", disable_web_page_preview=True)
         return
-    # Header text first
     header = "🎬 <b>Latest 5 Videos:</b> 🎬" + WEBSITE_TEXT
     await message_obj.reply_text(header, parse_mode="HTML", disable_web_page_preview=True)
-    # ===== FIX 1 + FIX 2: Photo 5ma eka para + Title escape =====
     async def send_one(i, v):
         title = clean_title(v['title'])
         caption = f"🎬 <b>{i}. {title}</b>\n\n👇 <b>Watch Now Baby! 👇</b>\n{v['link']}" + WEBSITE_TEXT
