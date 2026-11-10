@@ -18,7 +18,7 @@ CHANNEL_IDS = os.environ.get("CHANNEL_IDS", "")
 GROUP_IDS = os.environ.get("GROUP_IDS", "")
 ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip().isdigit()]
 
-WEBSITE_TEXT = "\n\n🌐 <b>Website:</b> https://pamelacullen.com"
+WEBSITE_TEXT = "\n\n🌐 Website: https://pamelacullen.com"
 CHANNEL_IDS_LIST = [x.strip() for x in CHANNEL_IDS.split(",") if x.strip()]
 GROUP_IDS_LIST = [x.strip() for x in GROUP_IDS.split(",") if x.strip()]
 ALL_TARGET_IDS = CHANNEL_IDS_LIST + GROUP_IDS_LIST
@@ -30,13 +30,13 @@ LAST_VIDEO_FILE = "last_video.txt"
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Bot is Alive Baby! ❤️"
+    return "Bot is Alive!"
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 threading.Thread(target=run_flask, daemon=True).start()
 
-# ================= YOUTUBE FETCH - FAST =================
+# ================= YOUTUBE FETCH =================
 def fetch_rss():
     try:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
@@ -128,7 +128,7 @@ async def send_video_photo(bot, chat_id, video):
 async def send_videos_with_thumbnails(message_obj, is_callback=False):
     vids = VIDEO_CACHE["videos"][:10] if VIDEO_CACHE["videos"] else get_videos_list(10)
     if not vids:
-        await message_obj.reply_text(f"⏳ <b>Videos Loading Baby... 10 sec wait karala ayeth obanna! 🥰</b>\n\n🎬 <b>Watch Here:</b>\n{CHANNEL_URL}" + WEBSITE_TEXT, parse_mode="HTML", disable_web_page_preview=False)
+        await message_obj.reply_text(f"⏳ <b>Videos Loading Baby... Please wait 10 sec and try again! 🥰</b>\n\n🎬 <b>Watch Here:</b>\n{CHANNEL_URL}" + WEBSITE_TEXT, parse_mode="HTML", disable_web_page_preview=False)
         return
     header = "🎬 <b>Latest 10 Videos:</b> 🎬" + WEBSITE_TEXT
     await message_obj.reply_text(header, parse_mode="HTML", disable_web_page_preview=True)
@@ -185,7 +185,7 @@ async def pin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.pin_chat_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
         await update.message.reply_text("📌 <b>Pinned Baby!</b>", parse_mode="HTML")
     except Exception as e:
-        await update.message.reply_text(f"❌ <b>Pin Failed - Make me Admin with Pin Permission Baby! 🥺</b>", parse_mode="HTML")
+        await update.message.reply_text("❌ <b>Pin Failed - Make me Admin with Pin Permission Baby! 🥺</b>", parse_mode="HTML")
 
 async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for member in update.message.new_chat_members:
@@ -205,7 +205,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         v = get_latest_video()
         if v:
             title = clean_title(v.get('title'))
-            txt = f"🎬 <b>{title}</b>\n\n👀 <b>Me Video Eka Baluwada Baby? 🥺</b>\n👇 <b>Watch Now! 👇</b>\n{v['link']}" + WEBSITE_TEXT
+            txt = f"🎬 <b>{title}</b>\n\n👀 <b>Did You Watch This Video Baby? 🥺</b>\n👇 <b>Watch Now! 👇</b>\n{v['link']}" + WEBSITE_TEXT
             await query.message.reply_text(txt, parse_mode="HTML", disable_web_page_preview=False)
     elif data == "pin_latest":
         v = get_latest_video()
@@ -225,7 +225,7 @@ async def update_video_cache_job(context: ContextTypes.DEFAULT_TYPE):
             if videos:
                 VIDEO_CACHE["videos"] = videos
                 VIDEO_CACHE["time"] = time_module.time()
-                print(f"✅ Cache Updated: {len(videos)} videos")
+                print(f"Cache Updated: {len(videos)} videos")
     except Exception as e:
         print(f"Cache update failed: {e}")
 
@@ -246,7 +246,7 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
             return
         if latest["id"] != last_id:
             save_last_video_id(latest["id"])
-            print(f"🔥 NEW VIDEO: {latest['title']}")
+            print(f"NEW VIDEO: {latest['title']}")
             for ch in ALL_TARGET_IDS:
                 try:
                     try:
@@ -256,9 +256,9 @@ async def check_new_video(context: ContextTypes.DEFAULT_TYPE):
                     msg = await send_video_photo(context.bot, int(ch), latest)
                     try:
                         await context.bot.pin_chat_message(chat_id=int(ch), message_id=msg.message_id)
-                        print(f"📌 Pinned in {ch}")
+                        print(f"Pinned in {ch}")
                     except Exception as e:
-                        print(f"❌ PIN FAILED in {ch}: {e}")
+                        print(f"PIN FAILED in {ch}: {e}")
                     await asyncio.sleep(1)
                 except Exception as e:
                     print(f"Error sending to {ch}: {e}")
@@ -271,7 +271,7 @@ async def promo_message(context: ContextTypes.DEFAULT_TYPE):
         if not v:
             return
         title = clean_title(v.get('title'))
-        caption = f"🎬 <b>{title}</b>\n\n👀 <b>Me Video Eka Baluwada Baby? 🥺</b>\n👇 <b>Watch Now Baby! 👇</b>\n{v['link']}" + WEBSITE_TEXT
+        caption = f"🎬 <b>{title}</b>\n\n👀 <b>Did You Watch This Video Baby? 🥺</b>\n👇 <b>Watch Now Baby! 👇</b>\n{v['link']}" + WEBSITE_TEXT
         for ch in ALL_TARGET_IDS:
             try:
                 try:
@@ -317,7 +317,7 @@ def main():
         jq.run_repeating(update_video_cache_job, interval=60, first=5)
         jq.run_daily(good_morning, time=time(hour=6, minute=0))
         jq.run_daily(good_night, time=time(hour=22, minute=0))
-    print("Bot Started Baby! ❤️")
+    print("Bot Started!")
     app_bot.run_polling()
 
 if __name__ == "__main__":
