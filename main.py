@@ -22,7 +22,7 @@ YOUTUBE_CHANNEL_ID = "UCR4MDIWLNe4p_J-RP0dnS5g"
 YOUTUBE_CHANNEL_HANDLE = "UCR4MDIWLNe4p_J-RP0dnS5g"
 
 # ===== 🌐 YOUR WEBSITE LINK - PAMELA'S WORLD =====
-WEBSITE_URL = "https://pamelacullen.onrender.com/"
+WEBSITE_URL = "https://pamelacullen-o4dh.onrender.com/"
 WEBSITE_TEXT = f"\n\n🌐 <b>Join Our Website:</b>\n👇 <b>Click Here Baby! 👇</b>\n{WEBSITE_URL}\n💖 <b>Pamela's World - Stay Cute, Stay Loved!</b> 🌸"
 
 LAST_VIDEO_ID = {"id": None}
